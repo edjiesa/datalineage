@@ -1,0 +1,121 @@
+import React, { memo } from 'react';
+import { Handle, Position } from 'reactflow';
+import { Database, Table, Globe, Eye, Columns } from 'lucide-react';
+
+const dbColors = {
+  'postgres-core': {
+    border: 'border-emerald-500/40',
+    bg: 'bg-emerald-950/20',
+    badge: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
+    glow: 'group-hover:border-emerald-400/80',
+  },
+  'postgres-logistics': {
+    border: 'border-blue-500/40',
+    bg: 'bg-blue-950/20',
+    badge: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
+    glow: 'group-hover:border-blue-400/80',
+  },
+  'postgres-analytics': {
+    border: 'border-purple-500/40',
+    bg: 'bg-purple-950/20',
+    badge: 'bg-purple-900/60 text-purple-300 border-purple-700/50',
+    glow: 'group-hover:border-purple-400/80',
+  },
+};
+
+const defaultColor = {
+  border: 'border-slate-700',
+  bg: 'bg-slate-900/60',
+  badge: 'bg-slate-800 text-slate-300 border-slate-700',
+  glow: 'group-hover:border-slate-500',
+};
+
+export const TableNode = memo(({ data, selected }) => {
+  const isForeign = data.type === 'FOREIGN TABLE';
+  const isView = data.type && data.type.includes('VIEW');
+  const styling = dbColors[data.database] || defaultColor;
+
+  return (
+    <div
+      className={`group relative rounded-xl border bg-slate-900/95 backdrop-blur-md shadow-xl transition-all duration-200 w-80 text-xs ${
+        selected ? 'ring-2 ring-cyan-400 border-cyan-400 shadow-cyan-500/20' : styling.border
+      } ${styling.glow}`}
+    >
+      {/* Handles for connections */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-cyan-400 !border-2 !border-slate-900 !w-3 !h-3 hover:scale-125 transition-transform"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!bg-cyan-400 !border-2 !border-slate-900 !w-3 !h-3 hover:scale-125 transition-transform"
+      />
+
+      {/* Header bar */}
+      <div className="p-3 border-b border-slate-800/80 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Database className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${styling.badge} truncate`}>
+            {data.database}
+          </span>
+        </div>
+        
+        {/* Table Type Badge */}
+        {isForeign ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-600/60 shrink-0">
+            <Globe className="w-3 h-3 text-cyan-400 animate-pulse" />
+            FDW FOREIGN
+          </span>
+        ) : isView ? (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-600/60 shrink-0">
+            <Eye className="w-3 h-3 text-purple-400" />
+            VIEW
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-700/40 shrink-0">
+            <Table className="w-3 h-3 text-emerald-400" />
+            TABLE
+          </span>
+        )}
+      </div>
+
+      {/* Table details */}
+      <div className="p-3 space-y-2">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-slate-400 font-mono text-[11px]">{data.schema}.</span>
+          <span className="text-white font-bold text-sm tracking-tight truncate">{data.name}</span>
+        </div>
+
+        {/* Foreign table origin link banner */}
+        {isForeign && (
+          <div className="bg-slate-950/80 border border-cyan-900/60 rounded-lg p-2 space-y-1">
+            <div className="text-[10px] text-cyan-400 font-medium flex items-center gap-1">
+              <span>Source Server:</span>
+              <span className="font-mono text-cyan-200 bg-cyan-950 px-1 py-0.2 rounded border border-cyan-800">
+                {data.foreignServer}
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-300 font-mono truncate">
+              ↳ {data.remoteSchema}.{data.remoteTable}
+            </div>
+          </div>
+        )}
+
+        {/* Columns summary preview */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+          <span className="flex items-center gap-1">
+            <Columns className="w-3 h-3" />
+            <span>{data.columnCount} columns</span>
+          </span>
+          <span className="text-[10px] text-slate-500 hover:text-slate-300">Click for details →</span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export const nodeTypes = {
+  tableNode: TableNode,
+};
