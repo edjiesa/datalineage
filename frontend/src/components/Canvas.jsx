@@ -33,7 +33,7 @@ export function Canvas({
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
 
-  // Expose fitView to parent via ref safely
+  // Expose fitView & getNodes to parent via ref safely
   useEffect(() => {
     if (canvasRef) {
       canvasRef.current = {
@@ -42,9 +42,12 @@ export function Canvas({
             rfInstance.fitView({ padding: 0.25, duration: 400 });
           }
         },
+        getNodes: () => {
+          return rfInstance ? rfInstance.getNodes() : initialNodes;
+        },
       };
     }
-  }, [canvasRef, rfInstance]);
+  }, [canvasRef, rfInstance, initialNodes]);
 
   // Auto-fit to full screen whenever nodes change
   useEffect(() => {
@@ -225,7 +228,7 @@ export function Canvas({
         onInit={setRfInstance}
         fitView
         fitViewOptions={{ padding: 0.25 }}
-        onlyRenderVisibleElements={true}
+        onlyRenderVisibleElements={false}
         minZoom={0.08}
         maxZoom={2.0}
         defaultEdgeOptions={{

@@ -76,6 +76,7 @@ export default function App() {
         loading={loading}
         onOpenHbaModal={() => setIsHbaOpen(true)}
         onFitView={() => canvasRef.current?.fitView()}
+        onGetNodes={() => canvasRef.current?.getNodes() || graphData.nodes}
       />
 
       {/* Main Canvas Area */}

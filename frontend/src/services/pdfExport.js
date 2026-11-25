@@ -1,28 +1,78 @@
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { getRectOfNodes, getTransformForBounds } from 'reactflow';
 
 export async function exportLineageToPdf({
   database = 'PostgreSQL',
   mode = 'fdw',
   granularity = 'object',
-  nodeCount = 0,
+  nodes = [],
 }) {
-  const flowElement = document.querySelector('.react-flow');
-  if (!flowElement) {
-    throw new Error('Canvas visualizer tidak ditemukan');
+  const viewportElement = document.querySelector('.react-flow__viewport');
+  if (!viewportElement) {
+    throw new Error('Canvas visualizer tidak ditemukan di halaman');
   }
 
-  // 1. Capture React Flow canvas as high-res PNG
-  const dataUrl = await toPng(flowElement, {
-    backgroundColor: '#020617', // slate-950 background
-    quality: 1.0,
-    pixelRatio: 2, // High resolution for crystal clear text
-    filter: (node) => {
-      // Exclude controls & minimap from PDF export for a clean report
+  // 1. Collect nodes to measure full diagram bounds
+  let activeNodes = nodes;
+  if (!activeNodes || activeNodes.length === 0) {
+    const domNodes = document.querySelectorAll('.react-flow__node');
+    if (domNodes.length > 0) {
+      activeNodes = Array.from(domNodes).map((el, i) => ({
+        id: `node-${i}`,
+        position: { x: el.offsetLeft || 0, y: el.offsetTop || 0 },
+        width: el.offsetWidth || 320,
+        height: el.offsetHeight || 160,
+      }));
+    }
+  }
+
+  if (!activeNodes || activeNodes.length === 0) {
+    throw new Error('Tidak ada data diagram yang ditemukan untuk diekspor');
+  }
+
+  // Ensure each node has width and height for getRectOfNodes
+  const safeNodes = activeNodes.map((n) => ({
+    ...n,
+    width: n.width || 320,
+    height: n.height || (granularity === 'column' ? 240 : 150),
+  }));
+
+  // 2. Calculate the exact bounding box of ALL nodes across the whole canvas
+  const nodesBounds = getRectOfNodes(safeNodes);
+  
+  // Padding around all diagram nodes
+  const padding = 70;
+  const imageWidth = Math.max(Math.ceil(nodesBounds.width + padding * 2), 1200);
+  const imageHeight = Math.max(Math.ceil(nodesBounds.height + padding * 2), 700);
+
+  // 3. Compute the viewport transform to encompass the whole diagram perfectly
+  const transform = getTransformForBounds(
+    nodesBounds,
+    imageWidth,
+    imageHeight,
+    0.1,
+    2.0
+  );
+
+  // 4. Capture .react-flow__viewport at ultra-high resolution (2.5x pixel ratio)
+  // This guarantees zero blurriness and zero cutting off!
+  const dataUrl = await toPng(viewportElement, {
+    backgroundColor: '#020617', // slate-950
+    width: imageWidth,
+    height: imageHeight,
+    pixelRatio: 2.5, // Razor sharp retina clarity
+    style: {
+      width: `${imageWidth}px`,
+      height: `${imageHeight}px`,
+      transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
+    },
+    filter: (domNode) => {
+      // Exclude controls & minimap from PDF export
       if (
-        node.classList?.contains('react-flow__controls') ||
-        node.classList?.contains('react-flow__minimap') ||
-        node.classList?.contains('react-flow__attribution')
+        domNode.classList?.contains('react-flow__controls') ||
+        domNode.classList?.contains('react-flow__minimap') ||
+        domNode.classList?.contains('react-flow__attribution')
       ) {
         return false;
       }
@@ -30,26 +80,31 @@ export async function exportLineageToPdf({
     },
   });
 
-  // 2. Initialize Landscape A4 PDF
+  // 5. Create High-Resolution PDF scaled to the true proportions of the diagram
+  // Convert px to mm (1 px ≈ 0.264583 mm)
+  const headerHeightMm = 28;
+  const contentWidthMm = Math.max(imageWidth * 0.264583, 297);
+  const contentHeightMm = Math.max(imageHeight * 0.264583, 210);
+  const pageHeightMm = contentHeightMm + headerHeightMm;
+
   const pdf = new jsPDF({
-    orientation: 'landscape',
+    orientation: contentWidthMm >= pageHeightMm ? 'landscape' : 'portrait',
     unit: 'mm',
-    format: 'a4',
+    format: [contentWidthMm, pageHeightMm],
+    compress: true,
   });
 
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-
-  // 3. Dark Theme Background
+  // Dark Theme Background
   pdf.setFillColor(2, 6, 23); // #020617
-  pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+  pdf.rect(0, 0, contentWidthMm, pageHeightMm, 'F');
 
-  // 4. Header Section
+  // Header Title
   pdf.setTextColor(6, 182, 212); // #06b6d4 cyan
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(16);
-  pdf.text('PostgreSQL Data Lineage & FDW Visualizer Report', 14, 15);
+  pdf.text('PostgreSQL Data Lineage & FDW Visualizer Report', 14, 13);
 
+  // Header Metadata
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   pdf.setTextColor(148, 163, 184); // #94a3b8 slate-400
@@ -57,41 +112,21 @@ export async function exportLineageToPdf({
     dateStyle: 'medium',
     timeStyle: 'short',
   });
-  pdf.text(`Database: ${database}  |  Mode: ${mode.toUpperCase()}  |  Granularity: ${granularity.toUpperCase()}  |  Nodes: ${nodeCount}  |  Generated: ${dateStr}`, 14, 21);
+  pdf.text(
+    `Database: ${database}   |   Mode: ${mode.toUpperCase()}   |   Granularity: ${granularity.toUpperCase()}   |   Total Nodes: ${safeNodes.length}   |   Generated: ${dateStr}`,
+    14,
+    19
+  );
 
   // Divider line
   pdf.setDrawColor(30, 41, 59); // slate-800
   pdf.setLineWidth(0.5);
-  pdf.line(14, 24, pageWidth - 14, 24);
+  pdf.line(14, 23, contentWidthMm - 14, 23);
 
-  // 5. Calculate Image aspect ratio to fit the page cleanly
-  const img = new Image();
-  img.src = dataUrl;
-  await new Promise((resolve) => (img.onload = resolve));
+  // Draw High-Res Canvas Image without downsampling
+  pdf.addImage(dataUrl, 'PNG', 0, headerHeightMm, contentWidthMm, contentHeightMm);
 
-  const contentWidth = pageWidth - 28;
-  const contentHeight = pageHeight - 34;
-
-  const imgRatio = img.width / img.height;
-  const contentRatio = contentWidth / contentHeight;
-
-  let renderWidth = contentWidth;
-  let renderHeight = contentHeight;
-  let offsetX = 14;
-  let offsetY = 27;
-
-  if (imgRatio > contentRatio) {
-    renderHeight = contentWidth / imgRatio;
-    offsetY = 27 + (contentHeight - renderHeight) / 2;
-  } else {
-    renderWidth = contentHeight * imgRatio;
-    offsetX = 14 + (contentWidth - renderWidth) / 2;
-  }
-
-  // Draw Graph Image
-  pdf.addImage(dataUrl, 'PNG', offsetX, offsetY, renderWidth, renderHeight);
-
-  // 6. Save PDF
+  // Save PDF
   const filename = `data-lineage-${database}-${mode}-${Date.now()}.pdf`;
   pdf.save(filename);
 }

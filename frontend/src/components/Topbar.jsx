@@ -43,6 +43,7 @@ export function Topbar({
   loading,
   onOpenHbaModal,
   onFitView,
+  onGetNodes,
 }) {
   const [showDbModal, setShowDbModal] = useState(false);
   const [formName, setFormName] = useState('');
@@ -84,11 +85,12 @@ export function Topbar({
   const handleDownloadPdf = async () => {
     setExportingPdf(true);
     try {
+      const activeNodes = onGetNodes ? onGetNodes() : [];
       await exportLineageToPdf({
         database: selectedDb,
         mode: viewMode,
         granularity: granularity,
-        nodeCount: stats?.renderedNodes || 0,
+        nodes: activeNodes,
       });
     } catch (err) {
       alert(`Gagal mengekspor PDF: ${err.message}`);
