@@ -5,7 +5,6 @@ import {
   Eye,
   RefreshCw,
   Search,
-  Filter,
   ShieldCheck,
   PlusCircle,
   Table,
@@ -26,8 +25,8 @@ export function Topbar({
   onSelectDb,
   selectedSchema,
   onSelectSchema,
-  onlyConnected,
-  onToggleOnlyConnected,
+  viewMode,
+  onSelectViewMode,
   searchTerm,
   onSearchChange,
   onRefresh,
@@ -106,9 +105,9 @@ export function Topbar({
 
   return (
     <>
-      <header className="h-16 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-5 flex items-center justify-between z-30 select-none">
-        {/* Left: Brand & Status */}
-        <div className="flex items-center gap-5">
+      <header className="h-16 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-5 flex items-center justify-between z-30 select-none">
+        {/* Left: Brand & Stats */}
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 text-slate-950 font-black">
               <Globe className="w-5 h-5 text-slate-950" />
@@ -126,23 +125,23 @@ export function Topbar({
 
           {/* Quick Stats Pill List */}
           {stats && (
-            <div className="hidden xl:flex items-center gap-2 text-xs">
+            <div className="hidden 2xl:flex items-center gap-1.5 text-xs">
               <button
                 onClick={() => setShowDbModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-colors"
               >
                 <Database className="w-3.5 h-3.5 text-blue-400" />
-                <span>{databases.length} Databases</span>
+                <span>{databases.length} DB</span>
               </button>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-300">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-300">
                 <Table className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{stats.totalTables || 0} Tables</span>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/50 text-cyan-300 font-semibold">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/50 text-cyan-300 font-semibold">
                 <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{stats.foreignTables || 0} FDW Tables</span>
+                <span>{stats.foreignTables || 0} FDW</span>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-950/70 border border-purple-700/50 text-purple-300">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-950/70 border border-purple-700/50 text-purple-300">
                 <Eye className="w-3.5 h-3.5 text-purple-400" />
                 <span>{stats.views || 0} Views</span>
               </div>
@@ -150,33 +149,68 @@ export function Topbar({
           )}
         </div>
 
-        {/* Center: Search & Filters */}
-        <div className="flex items-center gap-2.5">
-          {/* Mode Lineage Only Toggle (Crucial for 1500+ tables!) */}
-          <button
-            onClick={onToggleOnlyConnected}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-              onlyConnected
-                ? 'bg-cyan-950/80 border-cyan-500/70 text-cyan-300 shadow-sm shadow-cyan-500/20'
-                : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
-            }`}
-            title={onlyConnected ? 'Klik untuk menampilkan semua tabel' : 'Klik untuk memfilter hanya tabel FDW & Lineage'}
-          >
-            <Zap className={`w-3.5 h-3.5 ${onlyConnected ? 'text-cyan-400 fill-cyan-400' : 'text-slate-400'}`} />
-            <span>
-              {onlyConnected
-                ? `FDW Lineage Only (${stats?.renderedNodes || 0})`
-                : `Semua Tabel (${stats?.totalTables || 0})`}
-            </span>
-          </button>
+        {/* Center: View Modes Segmented Control (Solves 1573 Table Lag!) */}
+        <div className="flex items-center gap-3">
+          <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
+            {/* Mode 1: FDW Only (Recommended) */}
+            <button
+              onClick={() => onSelectViewMode('fdw')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'fdw'
+                  ? 'bg-cyan-600 text-slate-950 shadow-md shadow-cyan-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>FDW Lineage ({stats?.foreignTables || 0})</span>
+            </button>
+
+            {/* Mode 2: Views Lineage */}
+            <button
+              onClick={() => onSelectViewMode('views')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'views'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Views ({stats?.views || 0})</span>
+            </button>
+
+            {/* Mode 3: All / Search Table */}
+            <button
+              onClick={() => onSelectViewMode('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'all'
+                  ? 'bg-slate-800 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span>Cari Tabel ({stats?.totalTables || 0})</span>
+            </button>
+          </div>
+
+          {/* Search table */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cari nama tabel..."
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-44 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-56 transition-all"
+            />
+          </div>
 
           {/* Schema Selector */}
-          {stats?.schemas && stats.schemas.length > 0 && (
+          {stats?.schemas && stats.schemas.length > 0 && viewMode === 'all' && (
             <div className="flex items-center gap-1 text-xs">
               <select
                 value={selectedSchema}
                 onChange={(e) => onSelectSchema(e.target.value)}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[140px] truncate"
+                className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[130px] truncate"
               >
                 <option value="ALL">Semua Skema</option>
                 {stats.schemas.map((s) => (
@@ -187,34 +221,6 @@ export function Topbar({
               </select>
             </div>
           )}
-
-          {/* Search table */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search table or column..."
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-48 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-56 transition-all"
-            />
-          </div>
-
-          {/* Database filter */}
-          <div className="flex items-center gap-1 text-xs">
-            <select
-              value={selectedDb}
-              onChange={(e) => onSelectDb(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[130px] truncate"
-            >
-              <option value="ALL">All DBs</option>
-              {databases.map((db) => (
-                <option key={db.name} value={db.name}>
-                  {db.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         {/* Right: Actions */}

@@ -38,16 +38,16 @@ class GraphBuilder:
 
     def build_lineage_graph(
         self, 
-        only_connected: bool = True,
-        schema_filter: Optional[str] = None
+        mode: str = "fdw",  # "fdw" (default), "views", "all"
+        schema_filter: Optional[str] = None,
+        search_query: Optional[str] = None
     ) -> LineageGraphResponse:
-        edges: List[GraphEdge] = []
         table_id_lookup = {t.id: t for t in self.tables}
         
-        # 1. Identify all FDW relationships & edges
-        fdw_edge_count = 0
-        extra_nodes_needed: Dict[str, Dict[str, Any]] = {}
-        connected_table_ids: Set[str] = set()
+        # 1. Build FDW Edges & identify FDW nodes
+        fdw_edges: List[GraphEdge] = []
+        fdw_table_ids: Set[str] = set()
+        remote_stub_nodes: Dict[str, Dict[str, Any]] = {}
 
         for target_table in self.tables:
             if target_table.table_type == "FOREIGN TABLE" and target_table.foreign_server:
@@ -58,13 +58,11 @@ class GraphBuilder:
                 
                 source_id = f"{source_db}.{source_schema}.{source_table_name}"
                 
-                # Mark both as connected
-                connected_table_ids.add(target_table.id)
-                connected_table_ids.add(source_id)
+                fdw_table_ids.add(target_table.id)
+                fdw_table_ids.add(source_id)
 
-                # If source table is on an external server not in database list, generate a stub node
-                if source_id not in table_id_lookup and source_id not in extra_nodes_needed:
-                    extra_nodes_needed[source_id] = {
+                if source_id not in table_id_lookup and source_id not in remote_stub_nodes:
+                    remote_stub_nodes[source_id] = {
                         "id": source_id,
                         "database": f"External ({source_db})",
                         "schema": source_schema,
@@ -78,100 +76,160 @@ class GraphBuilder:
                     }
                 
                 edge_id = f"edge_fdw_{source_id}__to__{target_table.id}"
-                edges.append(GraphEdge(
+                fdw_edges.append(GraphEdge(
                     id=edge_id,
                     source=source_id,
                     target=target_table.id,
                     type="smoothstep",
                     animated=True,
-                    label=f"fdw ({target_table.foreign_server})",
+                    label=f"postgres_fdw ({target_table.foreign_server})",
                     data={
                         "relationship": "FDW_READS_FROM",
                         "server": target_table.foreign_server,
                         "sourceDb": source_db,
                         "targetDb": target_table.database,
-                        "isRemoteUnscanned": source_id in extra_nodes_needed
                     },
                     style={
                         "stroke": "#06b6d4",
                         "strokeWidth": 2.5
                     }
                 ))
-                fdw_edge_count += 1
 
-        # 2. Identify View Dependency relationships & edges
-        view_edge_count = 0
+        # 2. Build View Edges
+        view_edges: List[GraphEdge] = []
+        view_related_ids: Set[str] = set()
         for dep in self.deps:
             source_id = f"{dep.database}.{dep.dep_schema}.{dep.dep_table}"
             target_id = f"{dep.database}.{dep.view_schema}.{dep.view_name}"
             
-            connected_table_ids.add(source_id)
-            connected_table_ids.add(target_id)
-
-            if source_id in table_id_lookup and target_id in table_id_lookup:
-                edge_id = f"edge_view_{source_id}__to__{target_id}"
-                if not any(e.id == edge_id for e in edges):
-                    edges.append(GraphEdge(
-                        id=edge_id,
+            # If in FDW mode, only include views that connect directly to FDW tables!
+            if mode == "fdw":
+                if source_id in fdw_table_ids or target_id in fdw_table_ids:
+                    view_related_ids.add(source_id)
+                    view_related_ids.add(target_id)
+                    if source_id in table_id_lookup and target_id in table_id_lookup:
+                        view_edges.append(GraphEdge(
+                            id=f"edge_view_{source_id}__to__{target_id}",
+                            source=source_id,
+                            target=target_id,
+                            type="smoothstep",
+                            animated=False,
+                            label="view dependency",
+                            data={"relationship": "VIEW_DEPENDS_ON"},
+                            style={"stroke": "#8b5cf6", "strokeWidth": 2, "strokeDasharray": "5,5"}
+                        ))
+            elif mode == "views":
+                view_related_ids.add(source_id)
+                view_related_ids.add(target_id)
+                if source_id in table_id_lookup and target_id in table_id_lookup:
+                    view_edges.append(GraphEdge(
+                        id=f"edge_view_{source_id}__to__{target_id}",
                         source=source_id,
                         target=target_id,
                         type="smoothstep",
                         animated=False,
                         label="view dependency",
-                        data={
-                            "relationship": "VIEW_DEPENDS_ON",
-                            "view": f"{dep.view_schema}.{dep.view_name}",
-                            "depKind": dep.dep_kind
-                        },
-                        style={
-                            "stroke": "#8b5cf6",
-                            "strokeWidth": 2,
-                            "strokeDasharray": "5,5"
-                        }
+                        data={"relationship": "VIEW_DEPENDS_ON"},
+                        style={"stroke": "#8b5cf6", "strokeWidth": 2, "strokeDasharray": "5,5"}
                     ))
-                    view_edge_count += 1
 
-        # 3. Filter tables to render
+        # 3. Determine tables to render based on MODE
         tables_to_render: List[TableInfo] = []
-        for t in self.tables:
-            # If schema filter active, must match schema
-            if schema_filter and schema_filter != "ALL" and t.schema_name != schema_filter:
-                continue
+        
+        if mode == "fdw":
+            # ONLY tables participating in FDW (e.g. 1-10 tables)
+            target_ids = fdw_table_ids.union(view_related_ids)
+            for t in self.tables:
+                if t.id in target_ids:
+                    tables_to_render.append(t)
+        elif mode == "views":
+            # Views and their direct dependencies (capped to prevent 1500 partition flood)
+            cap = 60
+            for t in self.tables:
+                if t.id in view_related_ids:
+                    tables_to_render.append(t)
+                    if len(tables_to_render) >= cap:
+                        break
+        else: # mode == "all"
+            # Filter by search or schema, capped to max 60 tables
+            cap = 60
+            for t in self.tables:
+                if schema_filter and schema_filter != "ALL" and t.schema_name != schema_filter:
+                    continue
+                if search_query and search_query.strip():
+                    q = search_query.lower()
+                    if q not in t.table_name.lower() and q not in t.schema_name.lower():
+                        continue
+                tables_to_render.append(t)
+                if len(tables_to_render) >= cap:
+                    break
 
-            # If only_connected active, must participate in lineage
-            if only_connected and t.id not in connected_table_ids:
-                continue
-
-            tables_to_render.append(t)
-
-        # 4. Group tables by database for clean columnar layout
-        db_tables: Dict[str, List[TableInfo]] = {}
-        for t in tables_to_render:
-            if t.database not in db_tables:
-                db_tables[t.database] = []
-            db_tables[t.database].append(t)
-
-        sorted_dbs = list(db_tables.keys())
+        # 4. Smart Grid / Multi-Column Layout (NEVER a single 200,000px vertical line!)
         nodes: List[GraphNode] = []
         
-        x_offset = 60.0
-        y_spacing = 135.0
+        # Position Remote External Stubs on Left (X = 60)
+        ext_y_spacing = 135.0
+        for idx, (ext_id, ext_data) in enumerate(remote_stub_nodes.items()):
+            nodes.append(GraphNode(
+                id=ext_id,
+                type="tableNode",
+                position={"x": 60.0, "y": 100.0 + (idx * ext_y_spacing)},
+                data={**ext_data, "hasLineage": True}
+            ))
 
-        for col_idx, db in enumerate(sorted_dbs):
-            tables_in_db = db_tables[db]
+        # Position Local Tables
+        # In FDW mode: Foreign Tables on Middle (X = 520), Views on Right (X = 980)
+        if mode == "fdw":
+            foreign_tables = [t for t in tables_to_render if t.table_type == "FOREIGN TABLE"]
+            other_tables = [t for t in tables_to_render if t.table_type != "FOREIGN TABLE"]
             
-            def sort_priority(tbl: TableInfo):
-                if tbl.table_type == "BASE TABLE":
-                    return 0
-                elif tbl.table_type == "FOREIGN TABLE":
-                    return 1
-                return 2
-
-            tables_in_db.sort(key=sort_priority)
-
-            for row_idx, tbl in enumerate(tables_in_db):
-                pos_x = x_offset + (col_idx * 440.0)
-                pos_y = 100.0 + (row_idx * y_spacing)
+            for idx, tbl in enumerate(foreign_tables):
+                nodes.append(GraphNode(
+                    id=tbl.id,
+                    type="tableNode",
+                    position={"x": 520.0, "y": 100.0 + (idx * 135.0)},
+                    data={
+                        "id": tbl.id,
+                        "database": tbl.database,
+                        "schema": tbl.schema_name,
+                        "name": tbl.table_name,
+                        "type": tbl.table_type,
+                        "columnCount": tbl.column_count,
+                        "foreignServer": tbl.foreign_server,
+                        "remoteSchema": tbl.remote_schema,
+                        "remoteTable": tbl.remote_table,
+                        "foreignOptions": tbl.foreign_options,
+                        "hasLineage": True,
+                    }
+                ))
+            
+            for idx, tbl in enumerate(other_tables):
+                nodes.append(GraphNode(
+                    id=tbl.id,
+                    type="tableNode",
+                    position={"x": 980.0, "y": 100.0 + (idx * 135.0)},
+                    data={
+                        "id": tbl.id,
+                        "database": tbl.database,
+                        "schema": tbl.schema_name,
+                        "name": tbl.table_name,
+                        "type": tbl.table_type,
+                        "columnCount": tbl.column_count,
+                        "foreignServer": tbl.foreign_server,
+                        "remoteSchema": tbl.remote_schema,
+                        "remoteTable": tbl.remote_table,
+                        "foreignOptions": tbl.foreign_options,
+                        "hasLineage": True,
+                    }
+                ))
+        else:
+            # Grid Layout (3 columns of 12 items max per column)
+            for idx, tbl in enumerate(tables_to_render):
+                grid_col = idx // 10
+                grid_row = idx % 10
+                
+                pos_x = 100.0 + (grid_col * 380.0)
+                pos_y = 100.0 + (grid_row * 135.0)
                 
                 nodes.append(GraphNode(
                     id=tbl.id,
@@ -188,20 +246,19 @@ class GraphBuilder:
                         "remoteSchema": tbl.remote_schema,
                         "remoteTable": tbl.remote_table,
                         "foreignOptions": tbl.foreign_options,
-                        "hasLineage": tbl.id in connected_table_ids,
+                        "hasLineage": tbl.id in fdw_table_ids,
                     }
                 ))
 
-        # Position external stub nodes on the left column (-420px)
-        for idx, (ext_id, ext_data) in enumerate(extra_nodes_needed.items()):
-            nodes.append(GraphNode(
-                id=ext_id,
-                type="tableNode",
-                position={"x": -420.0, "y": 100.0 + (idx * y_spacing)},
-                data={**ext_data, "hasLineage": True}
-            ))
+        # Active edges
+        active_node_ids = {n.id for n in nodes}
+        all_edges = fdw_edges + view_edges
+        filtered_edges = [
+            e for e in all_edges 
+            if e.source in active_node_ids and e.target in active_node_ids
+        ]
 
-        # Collect unique schemas & table counts for UI dropdown
+        # Collect schemas
         schema_counts: Dict[str, int] = {}
         for t in self.tables:
             schema_counts[t.schema_name] = schema_counts.get(t.schema_name, 0) + 1
@@ -212,18 +269,15 @@ class GraphBuilder:
         ]
 
         stats = {
-            "totalDatabases": len(self.configured_dbs or sorted_dbs),
-            "databases": self.configured_dbs or sorted_dbs,
+            "totalDatabases": len(self.configured_dbs or [t.database for t in self.tables]),
+            "databases": self.configured_dbs or list({t.database for t in self.tables}),
             "totalTables": len(self.tables),
             "renderedNodes": len(nodes),
-            "connectedTables": len(connected_table_ids),
-            "nativeTables": sum(1 for t in self.tables if t.table_type == "BASE TABLE"),
             "foreignTables": sum(1 for t in self.tables if t.table_type == "FOREIGN TABLE"),
             "views": sum(1 for t in self.tables if "VIEW" in t.table_type),
-            "fdwConnections": fdw_edge_count,
-            "viewDependencies": view_edge_count,
+            "fdwConnections": len(fdw_edges),
             "schemas": schemas_list,
-            "onlyConnected": only_connected,
+            "mode": mode,
         }
 
-        return LineageGraphResponse(nodes=nodes, edges=edges, stats=stats)
+        return LineageGraphResponse(nodes=nodes, edges=filtered_edges, stats=stats)

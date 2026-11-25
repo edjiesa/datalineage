@@ -15,7 +15,7 @@ export default function App() {
   // Filters & State
   const [selectedDb, setSelectedDb] = useState('ALL');
   const [selectedSchema, setSelectedSchema] = useState('ALL');
-  const [onlyConnected, setOnlyConnected] = useState(true); // Default to True: avoids lag on 1000+ tables!
+  const [viewMode, setViewMode] = useState('fdw'); // Default 'fdw' (FAST, 60fps, shows ONLY FDW lineage)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [isHbaOpen, setIsHbaOpen] = useState(false);
@@ -25,7 +25,7 @@ export default function App() {
     setError(null);
     try {
       const [graph, dbs] = await Promise.all([
-        fetchLineageGraph(onlyConnected, selectedSchema),
+        fetchLineageGraph(viewMode, selectedSchema, searchTerm),
         fetchDatabases(),
       ]);
       setGraphData(graph);
@@ -36,10 +36,14 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [onlyConnected, selectedSchema]);
+  }, [viewMode, selectedSchema, searchTerm]);
 
   useEffect(() => {
-    loadData();
+    // Debounce search/filter loading
+    const timer = setTimeout(() => {
+      loadData();
+    }, 250);
+    return () => clearTimeout(timer);
   }, [loadData]);
 
   return (
@@ -52,8 +56,8 @@ export default function App() {
         onSelectDb={setSelectedDb}
         selectedSchema={selectedSchema}
         onSelectSchema={setSelectedSchema}
-        onlyConnected={onlyConnected}
-        onToggleOnlyConnected={() => setOnlyConnected(!onlyConnected)}
+        viewMode={viewMode}
+        onSelectViewMode={setViewMode}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         onRefresh={loadData}
@@ -66,7 +70,7 @@ export default function App() {
         {loading && graphData.nodes.length === 0 ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm text-slate-300 space-y-3">
             <RefreshCw className="w-8 h-8 animate-spin text-cyan-400" />
-            <p className="text-sm font-medium">Scanning PostgreSQL FDW catalogs & building lineage graph...</p>
+            <p className="text-sm font-medium">Memindai FDW & menyusun grafik lineage...</p>
           </div>
         ) : error && graphData.nodes.length === 0 ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950 p-6 text-center space-y-4">
