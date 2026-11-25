@@ -11,7 +11,7 @@ services:
     container_name: datalineage_backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8003:8000"
     volumes:
       - ./config:/app/config
     environment:
@@ -20,6 +20,8 @@ services:
     extra_hosts:
       # Allows backend container to connect to PostgreSQL running directly on host via 'host.docker.internal'
       - "host.docker.internal:host-gateway"
+    security_opt:
+      - seccomp:unconfined
     networks:
       - lineage-net
 
@@ -35,7 +37,9 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "3003:80"
+    security_opt:
+      - seccomp:unconfined
     networks:
       - lineage-net
 
