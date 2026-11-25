@@ -15,7 +15,8 @@ export default function App() {
   // Filters & State
   const [selectedDb, setSelectedDb] = useState('ALL');
   const [selectedSchema, setSelectedSchema] = useState('ALL');
-  const [viewMode, setViewMode] = useState('fdw'); // Default 'fdw' (FAST, 60fps, shows ONLY FDW lineage)
+  const [selectedView, setSelectedView] = useState('ALL');
+  const [viewMode, setViewMode] = useState('fdw'); // Default 'fdw'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [isHbaOpen, setIsHbaOpen] = useState(false);
@@ -25,7 +26,7 @@ export default function App() {
     setError(null);
     try {
       const [graph, dbs] = await Promise.all([
-        fetchLineageGraph(viewMode, selectedSchema, searchTerm),
+        fetchLineageGraph(viewMode, selectedSchema, searchTerm, selectedView),
         fetchDatabases(),
       ]);
       setGraphData(graph);
@@ -36,15 +37,20 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedSchema, searchTerm]);
+  }, [viewMode, selectedSchema, searchTerm, selectedView]);
 
   useEffect(() => {
-    // Debounce search/filter loading
     const timer = setTimeout(() => {
       loadData();
     }, 250);
     return () => clearTimeout(timer);
   }, [loadData]);
+
+  // When switching modes, reset selectedView
+  const handleModeChange = (mode) => {
+    setViewMode(mode);
+    setSelectedView('ALL');
+  };
 
   return (
     <div className="w-screen h-screen flex flex-col bg-slate-950 overflow-hidden font-sans">
@@ -56,8 +62,10 @@ export default function App() {
         onSelectDb={setSelectedDb}
         selectedSchema={selectedSchema}
         onSelectSchema={setSelectedSchema}
+        selectedView={selectedView}
+        onSelectView={setSelectedView}
         viewMode={viewMode}
-        onSelectViewMode={setViewMode}
+        onSelectViewMode={handleModeChange}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         onRefresh={loadData}
@@ -70,7 +78,7 @@ export default function App() {
         {loading && graphData.nodes.length === 0 ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm text-slate-300 space-y-3">
             <RefreshCw className="w-8 h-8 animate-spin text-cyan-400" />
-            <p className="text-sm font-medium">Memindai FDW & menyusun grafik lineage...</p>
+            <p className="text-sm font-medium">Memindai catalog & menyusun visualisasi...</p>
           </div>
         ) : error && graphData.nodes.length === 0 ? (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950 p-6 text-center space-y-4">

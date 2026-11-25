@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
-export async function fetchLineageGraph(mode = 'fdw', schema = null, search = null) {
+export async function fetchLineageGraph(mode = 'fdw', schema = null, search = null, view = null) {
   const params = new URLSearchParams();
   params.append('mode', mode);
   if (schema && schema !== 'ALL') {
@@ -8,6 +8,9 @@ export async function fetchLineageGraph(mode = 'fdw', schema = null, search = nu
   }
   if (search && search.trim()) {
     params.append('search', search.trim());
+  }
+  if (view && view !== 'ALL') {
+    params.append('view', view);
   }
   const res = await fetch(`${BASE_URL}/api/lineage/graph?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to fetch lineage graph: ${res.statusText}`);

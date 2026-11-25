@@ -86,7 +86,8 @@ def delete_database(name: str):
 def get_lineage_graph(
     mode: str = Query("fdw", description="View mode: 'fdw' (default, instant), 'views', or 'all'"),
     schema: Optional[str] = Query(None, description="Optional schema filter"),
-    search: Optional[str] = Query(None, description="Optional search query")
+    search: Optional[str] = Query(None, description="Optional search query"),
+    view: Optional[str] = Query(None, description="Optional specific view to inspect")
 ):
     """Scan all active databases and return React Flow nodes & edges with mode-based filtering"""
     all_tables: List[TableInfo] = []
@@ -106,7 +107,7 @@ def get_lineage_graph(
 
     configured_db_list = list(configured_databases.keys())
     builder = GraphBuilder(all_tables, all_servers, all_deps, configured_db_list)
-    return builder.build_lineage_graph(mode=mode, schema_filter=schema, search_query=search)
+    return builder.build_lineage_graph(mode=mode, schema_filter=schema, search_query=search, selected_view=view)
 
 @router.get("/table/columns", response_model=List[ColumnInfo])
 def get_table_columns(

@@ -42,7 +42,7 @@ class FDWScanner:
         return servers
 
     def scan_tables_and_views(self) -> List[TableInfo]:
-        """Fast scan all tables and views with column counts (optimized for 1000+ tables)"""
+        """Fast scan all tables, foreign tables, and views with column counts"""
         # 1. Get foreign tables metadata
         foreign_query = """
         SELECT 
@@ -72,7 +72,7 @@ class FDWScanner:
                 "remote_table": options_dict.get("table_name", fr["table_name"])
             }
 
-        # 2. Fast column count grouped by table (instead of loading 40,000+ rows)
+        # 2. Fast column count grouped by table
         count_query = """
         SELECT 
             table_schema,
@@ -85,7 +85,7 @@ class FDWScanner:
         count_rows = self.client.execute_query(count_query)
         col_count_map = {f"{c['table_schema']}.{c['table_name']}": c["col_count"] for c in count_rows}
 
-        # 3. Get all tables and views
+        # 3. Get all tables and views from information_schema
         table_query = """
         SELECT 
             table_schema AS schema_name,
@@ -97,8 +97,20 @@ class FDWScanner:
         """
         table_rows = self.client.execute_query(table_query)
 
+        # 4. Also scan materialized views from pg_matviews (which aren't in information_schema.tables)
+        matview_query = """
+        SELECT 
+            schemaname AS schema_name,
+            matviewname AS table_name,
+            'MATERIALIZED VIEW' AS table_type
+        FROM pg_matviews
+        WHERE schemaname NOT IN ('information_schema', 'pg_catalog');
+        """
+        matview_rows = self.client.execute_query(matview_query)
+        all_table_rows = table_rows + matview_rows
+
         tables = []
-        for t in table_rows:
+        for t in all_table_rows:
             s_name = t["schema_name"]
             t_name = t["table_name"]
             t_key = f"{s_name}.{t_name}"
@@ -128,7 +140,7 @@ class FDWScanner:
                 table_name=t_name,
                 table_type=final_type,
                 column_count=col_count_map.get(t_key, 0),
-                columns=[],  # Populated on-demand via get_table_columns()
+                columns=[],  # Populated on-demand
                 foreign_server=f_server,
                 remote_schema=r_schema,
                 remote_table=r_table,
@@ -160,14 +172,14 @@ class FDWScanner:
         ]
 
     def scan_view_dependencies(self) -> List[ViewDependency]:
-        """Scan which tables/views feed into each view in this database"""
+        """Scan which tables/views feed into each view in this database using union of pg_depend & view_table_usage"""
         query = """
         SELECT DISTINCT
             nv.nspname AS view_schema,
             cv.relname AS view_name,
             nt.nspname AS dep_schema,
             ct.relname AS dep_table,
-            ct.relkind AS dep_kind
+            ct.relkind::text AS dep_kind
         FROM pg_depend d
         JOIN pg_rewrite r ON d.objid = r.oid
         JOIN pg_class cv ON r.ev_class = cv.oid
@@ -175,10 +187,20 @@ class FDWScanner:
         JOIN pg_class ct ON d.refobjid = ct.oid
         JOIN pg_namespace nt ON ct.relnamespace = nt.oid
         WHERE cv.relkind IN ('v', 'm')
-          AND ct.relkind IN ('r', 'f', 'v', 'm')
+          AND ct.relkind IN ('r', 'f', 'v', 'm', 'p')
           AND cv.oid != ct.oid
           AND nv.nspname NOT IN ('information_schema', 'pg_catalog')
-          AND nt.nspname NOT IN ('information_schema', 'pg_catalog');
+          AND nt.nspname NOT IN ('information_schema', 'pg_catalog')
+        UNION
+        SELECT DISTINCT
+            view_schema,
+            view_name,
+            table_schema AS dep_schema,
+            table_name AS dep_table,
+            'r' AS dep_kind
+        FROM information_schema.view_table_usage
+        WHERE view_schema NOT IN ('information_schema', 'pg_catalog')
+          AND table_schema NOT IN ('information_schema', 'pg_catalog');
         """
         rows = self.client.execute_query(query)
         deps = []
@@ -189,6 +211,6 @@ class FDWScanner:
                 view_name=r["view_name"],
                 dep_schema=r["dep_schema"],
                 dep_table=r["dep_table"],
-                dep_kind=r["dep_kind"]
+                dep_kind=r.get("dep_kind") or "r"
             ))
         return deps

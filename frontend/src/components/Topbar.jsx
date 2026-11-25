@@ -14,7 +14,6 @@ import {
   X,
   Info,
   Zap,
-  Layers
 } from 'lucide-react';
 import { addDatabase, deleteDatabase, testDatabase } from '../services/api';
 
@@ -25,6 +24,8 @@ export function Topbar({
   onSelectDb,
   selectedSchema,
   onSelectSchema,
+  selectedView,
+  onSelectView,
   viewMode,
   onSelectViewMode,
   searchTerm,
@@ -149,10 +150,10 @@ export function Topbar({
           )}
         </div>
 
-        {/* Center: View Modes Segmented Control (Solves 1573 Table Lag!) */}
+        {/* Center: View Modes Segmented Control */}
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
-            {/* Mode 1: FDW Only (Recommended) */}
+            {/* Mode 1: FDW Only */}
             <button
               onClick={() => onSelectViewMode('fdw')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
@@ -192,20 +193,26 @@ export function Topbar({
             </button>
           </div>
 
-          {/* Search table */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari nama tabel..."
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-44 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-56 transition-all"
-            />
-          </div>
+          {/* View Selector Dropdown when in 'views' mode */}
+          {viewMode === 'views' && stats?.viewsList && stats.viewsList.length > 0 && (
+            <div className="flex items-center gap-1 text-xs">
+              <select
+                value={selectedView}
+                onChange={(e) => onSelectView(e.target.value)}
+                className="bg-purple-950/80 border border-purple-700/60 rounded-xl px-2.5 py-1.5 text-purple-200 text-xs font-semibold focus:outline-none focus:border-purple-400 max-w-[200px] truncate"
+              >
+                <option value="ALL">Semua Views ({stats.viewsList.length})</option>
+                {stats.viewsList.map((v) => (
+                  <option key={v.id} value={v.name}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Schema Selector */}
-          {stats?.schemas && stats.schemas.length > 0 && viewMode === 'all' && (
+          {/* Schema Selector when in 'all' mode */}
+          {viewMode === 'all' && stats?.schemas && stats.schemas.length > 0 && (
             <div className="flex items-center gap-1 text-xs">
               <select
                 value={selectedSchema}
@@ -221,6 +228,34 @@ export function Topbar({
               </select>
             </div>
           )}
+
+          {/* Search box */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder={viewMode === 'views' ? 'Cari nama view...' : 'Cari nama tabel...'}
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-40 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-52 transition-all"
+            />
+          </div>
+
+          {/* Database filter */}
+          <div className="flex items-center gap-1 text-xs">
+            <select
+              value={selectedDb}
+              onChange={(e) => onSelectDb(e.target.value)}
+              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[120px] truncate"
+            >
+              <option value="ALL">All DBs</option>
+              {databases.map((db) => (
+                <option key={db.name} value={db.name}>
+                  {db.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Right: Actions */}
