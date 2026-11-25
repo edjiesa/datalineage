@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect, useState, useImperativeHandle } from 'react';
+import React, { useCallback, useMemo, useEffect, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -31,14 +31,18 @@ export function Canvas({
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
 
-  // Expose fitView to parent via ref
-  useImperativeHandle(canvasRef, () => ({
-    fitView: () => {
-      if (rfInstance) {
-        rfInstance.fitView({ padding: 0.25, duration: 400 });
-      }
-    },
-  }));
+  // Expose fitView to parent via ref safely
+  useEffect(() => {
+    if (canvasRef) {
+      canvasRef.current = {
+        fitView: () => {
+          if (rfInstance) {
+            rfInstance.fitView({ padding: 0.25, duration: 400 });
+          }
+        },
+      };
+    }
+  }, [canvasRef, rfInstance]);
 
   // Auto-fit to full screen whenever nodes change
   useEffect(() => {

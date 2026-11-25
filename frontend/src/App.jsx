@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchLineageGraph, fetchDatabases } from './services/api';
 import { Topbar } from './components/Topbar';
 import { Canvas } from './components/Canvas';
@@ -7,6 +7,7 @@ import { HbaTopologyModal } from './components/HbaTopologyModal';
 import { RefreshCw, AlertCircle, Database } from 'lucide-react';
 
 export default function App() {
+  const canvasRef = useRef(null);
   const [graphData, setGraphData] = useState({ nodes: [], edges: [], stats: {} });
   const [databases, setDatabases] = useState([]);
   const [loading, setLoading] = useState(true);
