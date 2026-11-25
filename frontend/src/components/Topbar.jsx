@@ -158,106 +158,89 @@ export function Topbar({
 
   return (
     <>
-      <header className="h-16 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 flex items-center justify-between z-30 select-none">
-        {/* Left: Brand & Stats */}
-        <div className="flex items-center gap-3.5">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 text-slate-950 font-black">
-              <Globe className="w-5 h-5 text-slate-950" />
+      <header className="h-14 bg-slate-900/98 backdrop-blur-md border-b border-slate-800 px-3 flex items-center justify-between z-30 select-none gap-2">
+        {/* Left: Compact Brand & Summary Stats */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/20 text-slate-950 font-black">
+              <Globe className="w-4 h-4 text-slate-950" />
             </div>
-            <div>
-              <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
-                <span>PG Data Lineage</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  FDW Engine
-                </span>
-              </h1>
-              <p className="text-[11px] text-slate-400">PostgreSQL Lineage & Topology</p>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-sm text-white tracking-tight whitespace-nowrap">PG Lineage</span>
+              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 shrink-0">
+                FDW
+              </span>
             </div>
           </div>
 
-          {/* Quick Stats Pill List */}
+          {/* Quick Summary Stats (Compact single badge) */}
           {stats && (
-            <div className="hidden 2xl:flex items-center gap-1.5 text-xs">
-              <button
-                onClick={() => setShowDbModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-colors"
-              >
-                <Database className="w-3.5 h-3.5 text-blue-400" />
-                <span>{databases.length} DB</span>
-              </button>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-300">
-                <Table className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{stats.totalTables || 0} Tables</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-700/50 text-cyan-300 font-semibold">
-                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{stats.foreignTables || 0} FDW</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-950/70 border border-purple-700/50 text-purple-300">
-                <Eye className="w-3.5 h-3.5 text-purple-400" />
-                <span>{stats.views || 0} Views</span>
-              </div>
+            <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700/60 text-[11px] text-slate-300 font-mono shrink-0 whitespace-nowrap">
+              <span className="text-emerald-400 font-semibold">{stats.totalTables || 0} tbls</span>
+              <span className="text-slate-600">•</span>
+              <span className="text-cyan-400 font-semibold">{stats.foreignTables || 0} fdw</span>
+              <span className="text-slate-600">•</span>
+              <span className="text-purple-400 font-semibold">{stats.views || 0} views</span>
               {stats.procedures > 0 && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/50 text-amber-300">
-                  <Cpu className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{stats.procedures} Routines</span>
-                </div>
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-amber-400 font-semibold">{stats.procedures} proc</span>
+                </>
               )}
             </div>
           )}
         </div>
 
-        {/* Center: View Modes & Granularity Controls */}
-        <div className="flex items-center gap-2.5">
+        {/* Center: View Modes, Granularity, Search & Filters */}
+        <div className="flex items-center gap-2 shrink-0">
           {/* Mode Switcher */}
-          <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
+          <div className="flex bg-slate-950/90 p-0.5 rounded-xl border border-slate-800 text-[11px]">
             {/* Mode 1: FDW Only */}
             <button
               onClick={() => onSelectViewMode('fdw')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold transition-all ${
                 viewMode === 'fdw'
-                  ? 'bg-cyan-600 text-slate-950 shadow-md shadow-cyan-600/30'
+                  ? 'bg-cyan-600 text-slate-950 shadow-sm shadow-cyan-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Zap className="w-3.5 h-3.5" />
-              <span>FDW Lineage ({stats?.foreignTables || 0})</span>
+              <Zap className="w-3 h-3" />
+              <span>FDW ({stats?.foreignTables || 0})</span>
             </button>
 
             {/* Mode 2: Views Lineage */}
             <button
               onClick={() => onSelectViewMode('views')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold transition-all ${
                 viewMode === 'views'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Eye className="w-3.5 h-3.5" />
+              <Eye className="w-3 h-3" />
               <span>Views ({stats?.views || 0})</span>
             </button>
 
             {/* Mode 3: All / Search Table */}
             <button
               onClick={() => onSelectViewMode('all')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold transition-all ${
                 viewMode === 'all'
-                  ? 'bg-slate-800 text-white shadow-md'
+                  ? 'bg-slate-800 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Table className="w-3.5 h-3.5" />
-              <span>Cari Tabel</span>
+              <Table className="w-3 h-3" />
+              <span>Tabel</span>
             </button>
           </div>
 
           {/* Granularity Switcher: Object vs Column Level (Dataedo CLL) */}
-          <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
+          <div className="flex bg-slate-950/90 p-0.5 rounded-xl border border-slate-800 text-[11px]">
             <button
               onClick={() => onSelectGranularity('object')}
               title="Object-Level Lineage (Tabel & Views Ringkas)"
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold transition-all ${
                 granularity === 'object'
                   ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700'
                   : 'text-slate-400 hover:text-white'
@@ -269,24 +252,24 @@ export function Topbar({
             <button
               onClick={() => onSelectGranularity('column')}
               title="Column-Level Lineage (CLL - Relasi Antar Kolom Dataedo)"
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold transition-all ${
                 granularity === 'column'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm shadow-purple-600/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
               <Columns className="w-3 h-3" />
-              <span>Column (CLL)</span>
+              <span>CLL</span>
             </button>
           </div>
 
           {/* View Selector Dropdown when in 'views' mode */}
           {viewMode === 'views' && stats?.viewsList && stats.viewsList.length > 0 && (
-            <div className="flex items-center gap-1 text-xs">
+            <div className="flex items-center gap-1 text-[11px]">
               <select
                 value={selectedView}
                 onChange={(e) => onSelectView(e.target.value)}
-                className="bg-purple-950/80 border border-purple-700/60 rounded-xl px-2.5 py-1.5 text-purple-200 text-xs font-semibold focus:outline-none focus:border-purple-400 max-w-[190px] truncate"
+                className="bg-purple-950/80 border border-purple-700/60 rounded-xl px-2 py-1 text-purple-200 text-[11px] font-semibold focus:outline-none focus:border-purple-400 max-w-[145px] truncate"
               >
                 <option value="ALL">Semua Views ({stats.viewsList.length})</option>
                 {stats.viewsList.map((v) => (
@@ -300,11 +283,11 @@ export function Topbar({
 
           {/* Schema Selector when in 'all' mode */}
           {viewMode === 'all' && stats?.schemas && stats.schemas.length > 0 && (
-            <div className="flex items-center gap-1 text-xs">
+            <div className="flex items-center gap-1 text-[11px]">
               <select
                 value={selectedSchema}
                 onChange={(e) => onSelectSchema(e.target.value)}
-                className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[130px] truncate"
+                className="bg-slate-950/80 border border-slate-800 rounded-xl px-2 py-1 text-slate-200 text-[11px] focus:outline-none focus:border-cyan-500 max-w-[115px] truncate"
               >
                 <option value="ALL">Semua Skema</option>
                 {stats.schemas.map((s) => (
@@ -318,22 +301,22 @@ export function Topbar({
 
           {/* Search box */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder={viewMode === 'views' ? 'Cari view...' : 'Cari tabel...'}
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-36 pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-48 transition-all"
+              className="w-28 pl-7 pr-2.5 py-1 text-[11px] rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-40 transition-all"
             />
           </div>
 
           {/* Database filter */}
-          <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-1 text-[11px]">
             <select
               value={selectedDb}
               onChange={(e) => onSelectDb(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[110px] truncate"
+              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2 py-1 text-slate-200 text-[11px] focus:outline-none focus:border-cyan-500 max-w-[95px] truncate"
             >
               <option value="ALL">All DBs</option>
               {databases.map((db) => (
@@ -346,29 +329,29 @@ export function Topbar({
         </div>
 
         {/* Right: Actions (Fit View, Fullscreen, PDF, Manage DB, HBA, Rescan) */}
-        <div className="flex items-center gap-2">
-          {/* Fit View to 1 Full Screen */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Fit View */}
           <button
             onClick={onFitView}
             title="Pusatkan & Sesuaikan 1 Layar Penuh (Fit View)"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-[11px] text-slate-300 transition-colors"
           >
-            <Expand className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden xl:inline">Fit Screen</span>
+            <Expand className="w-3 h-3 text-cyan-400" />
+            <span className="hidden 2xl:inline">Fit</span>
           </button>
 
           {/* Fullscreen Browser Toggle */}
           <button
             onClick={toggleFullscreen}
             title={isFullscreen ? 'Keluar Fullscreen' : 'Layar Penuh Browser (Fullscreen)'}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-[11px] text-slate-300 transition-colors"
           >
             {isFullscreen ? (
-              <Minimize className="w-3.5 h-3.5 text-amber-400" />
+              <Minimize className="w-3 h-3 text-amber-400" />
             ) : (
-              <Maximize className="w-3.5 h-3.5 text-amber-400" />
+              <Maximize className="w-3 h-3 text-amber-400" />
             )}
-            <span className="hidden xl:inline">{isFullscreen ? 'Exit Full' : 'Full Screen'}</span>
+            <span className="hidden 2xl:inline">{isFullscreen ? 'Exit' : 'Full'}</span>
           </button>
 
           {/* Download PDF Button */}
@@ -376,12 +359,12 @@ export function Topbar({
             onClick={handleDownloadPdf}
             disabled={exportingPdf}
             title="Download visualisasi diagram ke file PDF"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 text-xs text-white font-bold transition-all shadow-md shadow-emerald-700/20 disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 text-[11px] text-white font-bold transition-all shadow-sm shadow-emerald-700/20 disabled:opacity-50"
           >
             {exportingPdf ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <RefreshCw className="w-3 h-3 animate-spin" />
             ) : (
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3 h-3" />
             )}
             <span>PDF</span>
           </button>
@@ -389,28 +372,28 @@ export function Topbar({
           {/* Databases Manager Button */}
           <button
             onClick={() => setShowDbModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-[11px] text-slate-200 font-medium transition-colors"
           >
-            <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden lg:inline">Manage DBs</span>
+            <Database className="w-3 h-3 text-blue-400" />
+            <span>{databases.length} DB</span>
           </button>
 
           {/* pg_hba.conf Modal Trigger */}
           <button
             onClick={onOpenHbaModal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-[11px] text-slate-200 font-medium transition-colors"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden lg:inline">pg_hba</span>
+            <ShieldCheck className="w-3 h-3 text-cyan-400" />
+            <span className="hidden xl:inline">pg_hba</span>
           </button>
 
           {/* Rescan Button */}
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-600/20 disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-[11px] font-bold transition-all shadow-sm shadow-cyan-600/20 disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             <span>Rescan</span>
           </button>
         </div>
