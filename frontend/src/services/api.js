@@ -12,6 +12,16 @@ export async function fetchDatabases() {
   return res.json();
 }
 
+export async function testDatabase(dbConfig) {
+  const res = await fetch(`${BASE_URL}/api/databases/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dbConfig)
+  });
+  if (!res.ok) throw new Error(`Failed to test connection: ${res.statusText}`);
+  return res.json();
+}
+
 export async function addDatabase(dbConfig) {
   const res = await fetch(`${BASE_URL}/api/databases`, {
     method: 'POST',

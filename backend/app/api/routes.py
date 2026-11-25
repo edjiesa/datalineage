@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
-from app.config import DBConfig, get_default_databases
+from app.config import DBConfig, load_databases, save_databases
 from app.extractor.db_client import PostgresClient
 from app.extractor.fdw_scanner import FDWScanner
 from app.extractor.hba_scanner import HbaScanner
@@ -14,14 +14,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
-# In-memory store of registered databases (starts with default demo databases)
+# In-memory dictionary of databases synced with config/databases.json
 configured_databases: Dict[str, DBConfig] = {
-    db.name: db for db in get_default_databases()
+    db.name: db for db in load_databases()
 }
+
+def sync_to_disk():
+    save_databases(list(configured_databases.values()))
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "service": "postgres-data-lineage-backend"}
+    return {
+        "status": "ok", 
+        "service": "postgres-data-lineage-backend",
+        "configured_databases": len(configured_databases)
+    }
 
 @router.get("/databases")
 def list_databases():
@@ -40,24 +47,44 @@ def list_databases():
         })
     return results
 
+@router.post("/databases/test")
+def test_db_connection(db: DBConfig):
+    """Test connecting to a database without saving it"""
+    client = PostgresClient(db)
+    try:
+        with client.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT version();")
+                ver = cur.fetchone()[0]
+                return {"success": True, "version": ver}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @router.post("/databases")
 def add_database(db: DBConfig):
-    """Add or update a database connection to scan"""
+    """Add or update a database configuration and persist to disk"""
     configured_databases[db.name] = db
+    sync_to_disk()
+    
     client = PostgresClient(db)
     is_online = client.test_connection()
-    return {"message": f"Database {db.name} saved", "is_online": is_online}
+    return {
+        "message": f"Database '{db.name}' saved successfully", 
+        "is_online": is_online
+    }
 
 @router.delete("/databases/{name}")
 def delete_database(name: str):
+    """Delete a database configuration and persist to disk"""
     if name in configured_databases:
         del configured_databases[name]
-        return {"message": f"Database {name} removed"}
+        sync_to_disk()
+        return {"message": f"Database '{name}' removed"}
     raise HTTPException(status_code=404, detail="Database not found")
 
 @router.get("/lineage/graph", response_model=LineageGraphResponse)
 def get_lineage_graph():
-    """Scan all databases and return React Flow nodes & edges"""
+    """Scan all active databases and return React Flow nodes & edges"""
     all_tables: List[TableInfo] = []
     all_servers: List[ForeignServerInfo] = []
     all_deps = []
@@ -73,7 +100,8 @@ def get_lineage_graph():
         all_tables.extend(scanner.scan_tables_and_views())
         all_deps.extend(scanner.scan_view_dependencies())
 
-    builder = GraphBuilder(all_tables, all_servers, all_deps)
+    configured_db_list = list(configured_databases.keys())
+    builder = GraphBuilder(all_tables, all_servers, all_deps, configured_db_list)
     return builder.build_lineage_graph()
 
 @router.get("/lineage/servers", response_model=List[ForeignServerInfo])

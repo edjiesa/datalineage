@@ -4,7 +4,7 @@ import { Topbar } from './components/Topbar';
 import { Canvas } from './components/Canvas';
 import { InspectorDrawer } from './components/InspectorDrawer';
 import { HbaTopologyModal } from './components/HbaTopologyModal';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, Database, PlusCircle } from 'lucide-react';
 
 export default function App() {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [], stats: {} });
@@ -77,6 +77,18 @@ export default function App() {
             >
               Retry Connection
             </button>
+          </div>
+        ) : databases.length === 0 ? (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950 p-6 text-center space-y-4">
+            <div className="p-4 bg-cyan-950/40 rounded-2xl border border-cyan-800/60 text-cyan-400">
+              <Database className="w-12 h-12" />
+            </div>
+            <div className="max-w-md space-y-2">
+              <h2 className="text-xl font-bold text-white">Belum Ada Database Terhubung</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Aplikasi ini siap memonitor database PostgreSQL milik server Anda. Klik tombol <strong>Manage DBs</strong> di atas atau tombol di bawah untuk menambahkan koneksi host, user, dan password database Anda.
+              </p>
+            </div>
           </div>
         ) : (
           <Canvas

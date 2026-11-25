@@ -2,123 +2,36 @@ version: '3.8'
 
 services:
   # -----------------------------------------------------------
-  # 1. Primary OLTP Database: Core Domain (Sales, Users, Catalog)
-  # -----------------------------------------------------------
-  postgres-core:
-    image: postgres:16-alpine
-    container_name: postgres-core
-    environment:
-      POSTGRES_DB: core_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./database-init/core:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d core_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - lineage-net
-
-  # -----------------------------------------------------------
-  # 2. Logistics Database: Consumes FDW from postgres-core
-  # -----------------------------------------------------------
-  postgres-logistics:
-    image: postgres:16-alpine
-    container_name: postgres-logistics
-    depends_on:
-      postgres-core:
-        condition: service_healthy
-    environment:
-      POSTGRES_DB: logistics_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5433:5432"
-    volumes:
-      - ./database-init/logistics:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d logistics_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - lineage-net
-
-  # -----------------------------------------------------------
-  # 3. Analytics Database: Consumes multiple FDWs (core + logistics)
-  # -----------------------------------------------------------
-  postgres-analytics:
-    image: postgres:16-alpine
-    container_name: postgres-analytics
-    depends_on:
-      postgres-core:
-        condition: service_healthy
-      postgres-logistics:
-        condition: service_healthy
-    environment:
-      POSTGRES_DB: analytics_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5434:5432"
-    volumes:
-      - ./database-init/analytics:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d analytics_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - lineage-net
-
-  # -----------------------------------------------------------
-  # 4. Backend Service: FastAPI Data Lineage & FDW Scanner
+  # 1. Backend Service: FastAPI Data Lineage & FDW Scanner
   # -----------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: lineage-backend
-    depends_on:
-      postgres-core:
-        condition: service_healthy
-      postgres-logistics:
-        condition: service_healthy
-      postgres-analytics:
-        condition: service_healthy
-    environment:
-      CORE_DB_HOST: postgres-core
-      CORE_DB_PORT: 5432
-      CORE_DB_NAME: core_db
-      CORE_DB_USER: postgres
-      CORE_DB_PASSWORD: postgres123
-      LOGISTICS_DB_HOST: postgres-logistics
-      LOGISTICS_DB_PORT: 5432
-      LOGISTICS_DB_NAME: logistics_db
-      LOGISTICS_DB_USER: postgres
-      LOGISTICS_DB_PASSWORD: postgres123
-      ANALYTICS_DB_HOST: postgres-analytics
-      ANALYTICS_DB_PORT: 5432
-      ANALYTICS_DB_NAME: analytics_db
-      ANALYTICS_DB_USER: postgres
-      ANALYTICS_DB_PASSWORD: postgres123
+    container_name: datalineage_backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      - ./config:/app/config
+    environment:
+      - CONFIG_FILE=/app/config/databases.json
+      - PYTHONUNBUFFERED=1
+    extra_hosts:
+      # Allows backend container to connect to PostgreSQL running directly on host via 'host.docker.internal'
+      - "host.docker.internal:host-gateway"
     networks:
       - lineage-net
 
   # -----------------------------------------------------------
-  # 5. Frontend Service: React Flow GUI Visualizer
+  # 2. Frontend Service: React Flow GUI Visualizer
   # -----------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: lineage-frontend
+    container_name: datalineage_frontend
+    restart: unless-stopped
     depends_on:
       - backend
     ports:

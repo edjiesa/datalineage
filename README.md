@@ -1,130 +1,89 @@
-# PostgreSQL Data Lineage & FDW Visualizer (Full Docker)
+# PostgreSQL Data Lineage & FDW Visualizer (Docker)
 
-Aplikasi visualisasi data lineage dan topologi antar-database PostgreSQL berbasis **Docker & Docker Compose**. Aplikasi ini mendeteksi koneksi dan aliran data lintas database yang menggunakan **`postgres_fdw`** (Foreign Data Wrapper) serta menganalisis aturan otentikasi jaringan dari **`pg_hba.conf`**.
+Aplikasi pemantauan visual data lineage dan topologi otentikasi antar-database PostgreSQL berbasis **Docker & Docker Compose**. Dirancang khusus untuk memonitor **database PostgreSQL milik server Anda sendiri**, terutama yang saling terhubung menggunakan **`postgres_fdw`** (Foreign Data Wrapper) dan konfigurasi otentikasi **`pg_hba.conf`**.
 
 ---
 
 ## 🌟 Fitur Utama
 
-1. **Automated Cross-DB Lineage Discovery (`postgres_fdw`)**:
+1. **Monitor Database Milik Anda Sendiri**:
+   - Tidak memerlukan database dummy. Anda cukup mendaftarkan koneksi (Host, Port, User, Password, DB Name) database PostgreSQL Anda.
+   - Konfigurasi database tersimpan secara permanen di file `config/databases.json` (tetap tersimpan saat container di-restart).
+2. **Automated Cross-DB Lineage Discovery (`postgres_fdw`)**:
    - Mendeteksi `FOREIGN SERVER`, `USER MAPPING`, dan `FOREIGN TABLE` antar-database secara otomatis via PostgreSQL system catalog (`pg_foreign_table`, `pg_foreign_server`, `information_schema`).
-   - Melacak ketergantungan view lokal maupun lintas database (`pg_depend`).
-2. **Interactive Node Graph GUI (React Flow)**:
+   - Melacak dependensi view lokal maupun cross-database (`pg_depend`).
+   - Jika tabel foreign merujuk ke database remote yang belum didaftarkan, sistem secara otomatis menggambarkan node sumber eksternal (`Remote Source Table`) sehingga aliran data tetap terlihat utuh.
+3. **Interactive Node Graph GUI (React Flow)**:
    - Visualisasi grafis interaktif dengan arah aliran data animasi (Source Table ──► Foreign Table ──► Views).
-   - Indikator khusus untuk membedakan `BASE TABLE`, `FOREIGN TABLE`, dan `VIEW`.
-   - Filter per database dan pencarian instan berdasarkan nama tabel, skema, atau kolom.
-3. **Inspector Drawer**:
-   - Menampilkan detail metadata tabel: daftar seluruh kolom, tipe data, status `NOT NULL`, ordinal position.
+   - Indikator pembeda visual `BASE TABLE`, `FOREIGN TABLE`, dan `VIEW`.
+   - Filter per database dan pencarian tabel/kolom secara instan.
+4. **Inspector Drawer**:
+   - Menampilkan detail metadata tabel: daftar kolom, tipe data, status `NOT NULL`, dan ordinal position.
    - Menampilkan opsi konfigurasi remote FDW (`foreign_server`, `remote_schema`, `remote_table`).
-4. **`pg_hba.conf` Inspector & Topology**:
+5. **`pg_hba.conf` Inspector & Topology**:
    - Membaca dan menampilkan aturan `pg_hba_file_rules` per database (IP / CIDR whitelist, metode otentikasi `scram-sha-256`/`md5`/`trust`).
-5. **Multi-Database Cluster Demo**:
-   - **`postgres-core`** (Port 5432): OLTP (`users`, `orders`, `products`, `payments`).
-   - **`postgres-logistics`** (Port 5433): Logistik yang mengimpor tabel luar dari `core` via `postgres_fdw`.
-   - **`postgres-analytics`** (Port 5434): Datamart & DWH yang mengimpor tabel luar dari `core` dan `logistics` sekaligus.
 
 ---
 
 ## 🚀 Cara Menjalankan
 
-### 1. Prasyarat
-- Docker Desktop (atau Docker Engine + Docker Compose) terpasang dan berjalan di komputer Anda.
-
-### 2. Jalankan Cluster
-Cukup jalankan satu perintah berikut di direktori proyek:
+### 1. Jalankan Container (Hanya Backend & Frontend)
 
 ```bash
 docker compose up --build -d
 ```
 
-### 3. Akses Layanan
-
-| Layanan | URL / Port | Keterangan |
-| :--- | :--- | :--- |
-| **Web GUI** | [http://localhost:3000](http://localhost:3000) | Tampilan visualisasi data lineage & pg_hba |
-| **Backend REST API** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI FastAPI |
-| **PostgreSQL Core** | `localhost:5432` (`core_db`) | User: `postgres`, Password: `postgres123` |
-| **PostgreSQL Logistics** | `localhost:5433` (`logistics_db`) | User: `postgres`, Password: `postgres123` |
-| **PostgreSQL Analytics** | `localhost:5434` (`analytics_db`) | User: `postgres`, Password: `postgres123` |
+Setelah berjalan:
+- **Web GUI**: Buka browser di [http://localhost:3000](http://localhost:3000) (atau IP server Anda: `http://<IP_SERVER>:3000`)
+- **Backend REST API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## 🔍 Menguji Data Lineage Langsung via PostgreSQL CLI
+## 🔌 Cara Menghubungkan Database Anda
 
-Anda dapat menguji bahwa Foreign Data Wrapper (`postgres_fdw`) benar-benar membaca data lintas database secara langsung:
+Ada 2 cara mudah untuk mendaftarkan database PostgreSQL Anda:
 
-### Query Cross-Database dari `postgres-analytics`:
-```bash
-docker exec -it postgres-analytics psql -U postgres -d analytics_db -c "
-SELECT 
-    order_number, 
-    customer_name, 
-    total_amount, 
-    carrier, 
-    fulfillment_hub 
-FROM datamart.v_cross_db_sales_fulfillment;
-"
-```
-*Query di atas menggabungkan data pelanggan dan pesanan dari `postgres-core` dengan data pengiriman dari `postgres-logistics` secara langsung via FDW!*
+### Cara 1: Melalui Web GUI (Paling Mudah)
+1. Buka [http://localhost:3000](http://localhost:3000).
+2. Klik tombol **Manage DBs** di pojok kanan atas.
+3. Masukkan koneksi PostgreSQL Anda:
+   - **Label**: Nama alias (misal: `db-production`, `db-analytics`)
+   - **Host**: 
+     - Jika database berada di mesin host yang sama dengan Docker: gunakan **`host.docker.internal`**
+     - Jika berada di server/IP lain: masukkan IP LAN atau IP Public PostgreSQL Anda (misal: `192.168.1.50`)
+   - **Port**: `5432` (default)
+   - **Database Name**, **User**, dan **Password**
+4. Klik tombol **Test Connection** untuk memastikan koneksi berhasil.
+5. Klik **Simpan & Scan**. Graf data lineage akan langsung ter-render otomatis!
 
----
+### Cara 2: Melalui File `config/databases.json`
+Anda juga bisa mengisi file `config/databases.json` secara langsung:
 
-## 📂 Struktur Direktori Proyek
-
-```
-DATA LINEAGE/
-├── docker-compose.yml              # Orkestrasi 3 PG + Backend + Frontend
-├── .env.example                    # Contoh variabel lingkungan
-├── README.md                       # Dokumentasi lengkap
-├── database-init/
-│   ├── core/
-│   │   └── 01-schema-and-data.sql  # Inisialisasi DB Core (Sales, Users)
-│   ├── logistics/
-│   │   └── 01-init-fdw.sql         # FDW ke Core + data logistik
-│   └── analytics/
-│       └── 01-init-fdw-and-views.sql # FDW ke Core & Logistics + Datamart views
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py                 # FastAPI App
-│       ├── config.py               # Konfigurasi koneksi PG
-│       ├── models/
-│       │   └── schema.py           # Pydantic models (Nodes, Edges, HBA)
-│       ├── extractor/
-│       │   ├── db_client.py        # PostgreSQL client & test connection
-│       │   ├── fdw_scanner.py      # Scanner pg_foreign_table & catalog
-│       │   └── hba_scanner.py      # Scanner pg_hba_file_rules
-│       ├── graph/
-│       │   └── graph_builder.py    # Mengubah catalog jadi graph React Flow
-│       └── api/
-│           └── routes.py           # REST endpoints
-└── frontend/
-    ├── Dockerfile                  # Multi-stage build (Vite + Nginx)
-    ├── nginx.conf                  # Nginx proxy ke backend
-    ├── package.json
-    ├── vite.config.js
-    ├── tailwind.config.js
-    └── src/
-        ├── App.jsx                 # Main layout & state
-        ├── main.jsx
-        ├── index.css
-        ├── components/
-        │   ├── Topbar.jsx          # Header, stats, search, DB selector
-        │   ├── Canvas.jsx          # React Flow Canvas
-        │   ├── CustomNodes.jsx     # Table & FDW Node component
-        │   ├── InspectorDrawer.jsx # Detail kolom & FDW options
-        │   └── HbaTopologyModal.jsx# Tabel aturan pg_hba.conf
-        └── services/
-            └── api.js              # Client HTTP API
+```json
+[
+  {
+    "name": "db-production",
+    "host": "host.docker.internal",
+    "port": 5432,
+    "dbname": "production_db",
+    "user": "postgres",
+    "password": "secret_password"
+  },
+  {
+    "name": "db-analytics",
+    "host": "192.168.1.60",
+    "port": 5432,
+    "dbname": "analytics_db",
+    "user": "postgres",
+    "password": "secret_password"
+  }
+]
 ```
 
 ---
 
 ## 🛑 Menghentikan Layanan
 
-Untuk menghentikan semua container dan menghapus volumenya:
-
 ```bash
-docker compose down -v
+docker compose down
 ```

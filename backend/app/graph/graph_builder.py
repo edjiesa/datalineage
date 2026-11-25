@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.models.schema import (
     TableInfo, ForeignServerInfo, ViewDependency, 
     GraphNode, GraphEdge, LineageGraphResponse
@@ -12,31 +12,30 @@ class GraphBuilder:
         self, 
         all_tables: List[TableInfo], 
         all_servers: List[ForeignServerInfo], 
-        all_deps: List[ViewDependency]
+        all_deps: List[ViewDependency],
+        configured_dbs: Optional[List[str]] = None
     ):
         self.tables = all_tables
         self.servers = all_servers
         self.deps = all_deps
+        self.configured_dbs = configured_dbs or []
 
-    def _resolve_remote_db(self, local_db: str, foreign_server_name: str) -> str:
-        """Find the matching database name for a given foreign server"""
+    def _resolve_remote_info(self, local_db: str, foreign_server_name: str) -> Dict[str, str]:
+        """Find remote server connection details"""
         for s in self.servers:
             if s.database == local_db and s.server_name == foreign_server_name:
-                # Match host or dbname
                 host = s.host or ""
                 dbname = s.dbname or ""
                 
-                # Check known naming conventions
-                if "core" in host or "core" in dbname:
-                    return "postgres-core"
-                elif "logistics" in host or "logistics" in dbname:
-                    return "postgres-logistics"
-                elif "analytics" in host or "analytics" in dbname:
-                    return "postgres-analytics"
+                # Check if host or dbname matches any of the user's configured databases
+                for cfg_db in self.configured_dbs:
+                    if cfg_db.lower() in host.lower() or cfg_db.lower() in dbname.lower():
+                        return {"db": cfg_db, "host": host, "dbname": dbname}
                 
-                # Default fallback if host matches a db name
-                return host
-        return "unknown_server"
+                # Otherwise, identify by host or server_name
+                matched_label = host if host else foreign_server_name
+                return {"db": matched_label, "host": host, "dbname": dbname}
+        return {"db": foreign_server_name, "host": "", "dbname": ""}
 
     def build_lineage_graph(self) -> LineageGraphResponse:
         nodes: List[GraphNode] = []
@@ -49,14 +48,7 @@ class GraphBuilder:
                 db_tables[t.database] = []
             db_tables[t.database].append(t)
 
-        # Positioning: Assign columns (X) to databases
-        # Order databases: core (left: 50), logistics (middle: 480), analytics (right: 920)
-        db_order = ["postgres-core", "postgres-logistics", "postgres-analytics"]
-        sorted_dbs = sorted(
-            db_tables.keys(), 
-            key=lambda d: db_order.index(d) if d in db_order else 99
-        )
-
+        sorted_dbs = list(db_tables.keys())
         table_id_lookup = {t.id: t for t in self.tables}
         
         x_offset = 60.0
@@ -76,7 +68,7 @@ class GraphBuilder:
             tables_in_db.sort(key=sort_priority)
 
             for row_idx, tbl in enumerate(tables_in_db):
-                pos_x = x_offset + (col_idx * 420.0)
+                pos_x = x_offset + (col_idx * 440.0)
                 pos_y = 100.0 + (row_idx * y_spacing)
                 
                 nodes.append(GraphNode(
@@ -100,16 +92,32 @@ class GraphBuilder:
 
         # 1. Build FDW Edges (Source Table -> Foreign Table)
         fdw_edge_count = 0
+        extra_nodes_needed: Dict[str, Dict[str, Any]] = {}
+
         for target_table in self.tables:
             if target_table.table_type == "FOREIGN TABLE" and target_table.foreign_server:
-                source_db = self._resolve_remote_db(target_table.database, target_table.foreign_server)
+                remote_info = self._resolve_remote_info(target_table.database, target_table.foreign_server)
+                source_db = remote_info["db"]
                 source_schema = target_table.remote_schema or "public"
                 source_table_name = target_table.remote_table or target_table.table_name
                 
                 source_id = f"{source_db}.{source_schema}.{source_table_name}"
                 
-                # Check if source table node exists
-                source_exists = source_id in table_id_lookup
+                # If source table is on an external server not yet scanned, generate a stub node
+                if source_id not in table_id_lookup and source_id not in extra_nodes_needed:
+                    extra_nodes_needed[source_id] = {
+                        "id": source_id,
+                        "database": f"External ({source_db})",
+                        "schema": source_schema,
+                        "name": source_table_name,
+                        "type": "REMOTE SOURCE TABLE",
+                        "columnCount": 0,
+                        "columns": [],
+                        "foreignServer": target_table.foreign_server,
+                        "remoteSchema": None,
+                        "remoteTable": None,
+                        "foreignOptions": {},
+                    }
                 
                 edge_id = f"edge_fdw_{source_id}__to__{target_table.id}"
                 edges.append(GraphEdge(
@@ -118,20 +126,29 @@ class GraphBuilder:
                     target=target_table.id,
                     type="smoothstep",
                     animated=True,
-                    label=f"postgres_fdw ({target_table.foreign_server})",
+                    label=f"fdw ({target_table.foreign_server})",
                     data={
                         "relationship": "FDW_READS_FROM",
                         "server": target_table.foreign_server,
                         "sourceDb": source_db,
                         "targetDb": target_table.database,
-                        "sourceResolved": source_exists
+                        "isRemoteUnscanned": source_id in extra_nodes_needed
                     },
                     style={
-                        "stroke": "#06b6d4", # cyan-500
+                        "stroke": "#06b6d4",
                         "strokeWidth": 2.5
                     }
                 ))
                 fdw_edge_count += 1
+
+        # Position any external source nodes on a column to the left (-380px)
+        for idx, (ext_id, ext_data) in enumerate(extra_nodes_needed.items()):
+            nodes.append(GraphNode(
+                id=ext_id,
+                type="tableNode",
+                position={"x": -380.0, "y": 100.0 + (idx * y_spacing)},
+                data=ext_data
+            ))
 
         # 2. Build View Dependency Edges (Dep Table -> View)
         view_edge_count = 0
@@ -141,7 +158,6 @@ class GraphBuilder:
             
             if source_id in table_id_lookup and target_id in table_id_lookup:
                 edge_id = f"edge_view_{source_id}__to__{target_id}"
-                # avoid duplicates
                 if not any(e.id == edge_id for e in edges):
                     edges.append(GraphEdge(
                         id=edge_id,
@@ -156,7 +172,7 @@ class GraphBuilder:
                             "depKind": dep.dep_kind
                         },
                         style={
-                            "stroke": "#8b5cf6", # violet-500
+                            "stroke": "#8b5cf6",
                             "strokeWidth": 2,
                             "strokeDasharray": "5,5"
                         }
