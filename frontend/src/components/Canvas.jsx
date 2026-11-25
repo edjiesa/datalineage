@@ -92,6 +92,7 @@ export function Canvas({
         onPaneClick={onPaneClick}
         fitView
         fitViewOptions={{ padding: 0.2 }}
+        onlyRenderVisibleElements={true}
         minZoom={0.2}
         maxZoom={1.8}
         defaultEdgeOptions={{

@@ -1,11 +1,40 @@
-import React from 'react';
-import { X, Database, Table, Globe, Eye, Columns, ArrowRight, ShieldCheck, Server } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Database, Table, Globe, Eye, Columns, ArrowRight, Server, RefreshCw } from 'lucide-react';
+import { fetchTableColumns } from '../services/api';
 
 export function InspectorDrawer({ selectedItem, onClose }) {
   if (!selectedItem) return null;
 
   const isEdge = Boolean(selectedItem.source && selectedItem.target);
   const data = selectedItem.data || {};
+
+  const [columns, setColumns] = useState(data.columns || []);
+  const [loadingCols, setLoadingCols] = useState(false);
+
+  useEffect(() => {
+    if (!isEdge && data.name && data.database && data.type !== 'REMOTE SOURCE TABLE') {
+      // If columns already loaded, use them
+      if (data.columns && data.columns.length > 0) {
+        setColumns(data.columns);
+      } else {
+        // Fetch on-demand
+        setLoadingCols(true);
+        fetchTableColumns(data.database, data.schema, data.name)
+          .then((cols) => {
+            setColumns(cols);
+          })
+          .catch((err) => {
+            console.error('Failed to load columns:', err);
+            setColumns([]);
+          })
+          .finally(() => {
+            setLoadingCols(false);
+          });
+      }
+    } else {
+      setColumns([]);
+    }
+  }, [selectedItem, isEdge, data.name, data.database, data.schema]);
 
   return (
     <div className="fixed right-0 top-16 bottom-0 w-96 bg-slate-900/95 backdrop-blur-md border-l border-slate-800 shadow-2xl z-40 flex flex-col text-slate-100 transition-all duration-300">
@@ -100,7 +129,7 @@ export function InspectorDrawer({ selectedItem, onClose }) {
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-slate-400">Total Columns</span>
-                <span className="font-semibold text-white">{data.columnCount || (data.columns && data.columns.length) || 0}</span>
+                <span className="font-semibold text-white">{data.columnCount || columns.length || 0}</span>
               </div>
             </div>
 
@@ -133,12 +162,22 @@ export function InspectorDrawer({ selectedItem, onClose }) {
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                   <Columns className="w-3.5 h-3.5" />
-                  Columns ({data.columns ? data.columns.length : 0})
+                  Columns ({data.columnCount || columns.length || 0})
                 </span>
+                {loadingCols && (
+                  <span className="text-[10px] text-cyan-400 flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Loading...
+                  </span>
+                )}
               </div>
               <div className="bg-slate-950/80 rounded-xl border border-slate-800 divide-y divide-slate-800/60 max-h-72 overflow-y-auto">
-                {data.columns && data.columns.length > 0 ? (
-                  data.columns.map((col, idx) => (
+                {loadingCols ? (
+                  <div className="p-6 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+                    <span>Loading column details...</span>
+                  </div>
+                ) : columns.length > 0 ? (
+                  columns.map((col, idx) => (
                     <div key={idx} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-900/60">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-500 font-mono text-[10px] w-4">{col.ordinal_position}</span>
@@ -156,7 +195,7 @@ export function InspectorDrawer({ selectedItem, onClose }) {
                   ))
                 ) : (
                   <div className="p-4 text-center text-slate-500 text-xs">
-                    No column details available
+                    {data.type === 'REMOTE SOURCE TABLE' ? 'Remote table schema (not yet connected directly)' : 'No columns found'}
                   </div>
                 )}
               </div>

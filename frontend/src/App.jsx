@@ -4,7 +4,7 @@ import { Topbar } from './components/Topbar';
 import { Canvas } from './components/Canvas';
 import { InspectorDrawer } from './components/InspectorDrawer';
 import { HbaTopologyModal } from './components/HbaTopologyModal';
-import { RefreshCw, AlertCircle, Database, PlusCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, Database } from 'lucide-react';
 
 export default function App() {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [], stats: {} });
@@ -14,6 +14,8 @@ export default function App() {
 
   // Filters & State
   const [selectedDb, setSelectedDb] = useState('ALL');
+  const [selectedSchema, setSelectedSchema] = useState('ALL');
+  const [onlyConnected, setOnlyConnected] = useState(true); // Default to True: avoids lag on 1000+ tables!
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [isHbaOpen, setIsHbaOpen] = useState(false);
@@ -23,7 +25,7 @@ export default function App() {
     setError(null);
     try {
       const [graph, dbs] = await Promise.all([
-        fetchLineageGraph(),
+        fetchLineageGraph(onlyConnected, selectedSchema),
         fetchDatabases(),
       ]);
       setGraphData(graph);
@@ -34,7 +36,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onlyConnected, selectedSchema]);
 
   useEffect(() => {
     loadData();
@@ -48,6 +50,10 @@ export default function App() {
         databases={databases}
         selectedDb={selectedDb}
         onSelectDb={setSelectedDb}
+        selectedSchema={selectedSchema}
+        onSelectSchema={setSelectedSchema}
+        onlyConnected={onlyConnected}
+        onToggleOnlyConnected={() => setOnlyConnected(!onlyConnected)}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         onRefresh={loadData}
@@ -86,7 +92,7 @@ export default function App() {
             <div className="max-w-md space-y-2">
               <h2 className="text-xl font-bold text-white">Belum Ada Database Terhubung</h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Aplikasi ini siap memonitor database PostgreSQL milik server Anda. Klik tombol <strong>Manage DBs</strong> di atas atau tombol di bawah untuk menambahkan koneksi host, user, dan password database Anda.
+                Aplikasi ini siap memonitor database PostgreSQL milik server Anda. Klik tombol <strong>Manage DBs</strong> di atas untuk menambahkan koneksi host, user, dan password database Anda.
               </p>
             </div>
           </div>

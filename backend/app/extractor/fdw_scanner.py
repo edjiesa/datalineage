@@ -42,7 +42,7 @@ class FDWScanner:
         return servers
 
     def scan_tables_and_views(self) -> List[TableInfo]:
-        """Scan all native tables, foreign tables, and views"""
+        """Fast scan all tables and views with column counts (optimized for 1000+ tables)"""
         # 1. Get foreign tables metadata
         foreign_query = """
         SELECT 
@@ -72,7 +72,20 @@ class FDWScanner:
                 "remote_table": options_dict.get("table_name", fr["table_name"])
             }
 
-        # 2. Get all tables and views from information_schema
+        # 2. Fast column count grouped by table (instead of loading 40,000+ rows)
+        count_query = """
+        SELECT 
+            table_schema,
+            table_name,
+            COUNT(*)::int AS col_count
+        FROM information_schema.columns
+        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+        GROUP BY table_schema, table_name;
+        """
+        count_rows = self.client.execute_query(count_query)
+        col_count_map = {f"{c['table_schema']}.{c['table_name']}": c["col_count"] for c in count_rows}
+
+        # 3. Get all tables and views
         table_query = """
         SELECT 
             table_schema AS schema_name,
@@ -83,32 +96,6 @@ class FDWScanner:
         ORDER BY table_schema, table_name;
         """
         table_rows = self.client.execute_query(table_query)
-
-        # 3. Get all columns
-        col_query = """
-        SELECT 
-            table_schema,
-            table_name,
-            column_name,
-            data_type,
-            is_nullable,
-            ordinal_position
-        FROM information_schema.columns
-        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY table_schema, table_name, ordinal_position;
-        """
-        col_rows = self.client.execute_query(col_query)
-        col_map = {}
-        for c in col_rows:
-            t_key = f"{c['table_schema']}.{c['table_name']}"
-            if t_key not in col_map:
-                col_map[t_key] = []
-            col_map[t_key].append(ColumnInfo(
-                name=c["column_name"],
-                data_type=c["data_type"],
-                is_nullable=c["is_nullable"],
-                ordinal_position=c["ordinal_position"]
-            ))
 
         tables = []
         for t in table_rows:
@@ -140,13 +127,37 @@ class FDWScanner:
                 schema_name=s_name,
                 table_name=t_name,
                 table_type=final_type,
-                columns=col_map.get(t_key, []),
+                column_count=col_count_map.get(t_key, 0),
+                columns=[],  # Populated on-demand via get_table_columns()
                 foreign_server=f_server,
                 remote_schema=r_schema,
                 remote_table=r_table,
                 foreign_options=f_options
             ))
         return tables
+
+    def get_table_columns(self, schema_name: str, table_name: str) -> List[ColumnInfo]:
+        """Fetch columns on-demand for a single clicked table"""
+        query = """
+        SELECT 
+            column_name,
+            data_type,
+            is_nullable,
+            ordinal_position
+        FROM information_schema.columns
+        WHERE table_schema = %s AND table_name = %s
+        ORDER BY ordinal_position;
+        """
+        rows = self.client.execute_query(query, (schema_name, table_name))
+        return [
+            ColumnInfo(
+                name=r["column_name"],
+                data_type=r["data_type"],
+                is_nullable=r["is_nullable"],
+                ordinal_position=r["ordinal_position"]
+            )
+            for r in rows
+        ]
 
     def scan_view_dependencies(self) -> List[ViewDependency]:
         """Scan which tables/views feed into each view in this database"""

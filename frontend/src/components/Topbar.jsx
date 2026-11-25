@@ -13,7 +13,9 @@ import {
   CheckCircle2,
   XCircle,
   X,
-  Info
+  Info,
+  Zap,
+  Layers
 } from 'lucide-react';
 import { addDatabase, deleteDatabase, testDatabase } from '../services/api';
 
@@ -22,6 +24,10 @@ export function Topbar({
   databases,
   selectedDb,
   onSelectDb,
+  selectedSchema,
+  onSelectSchema,
+  onlyConnected,
+  onToggleOnlyConnected,
   searchTerm,
   onSearchChange,
   onRefresh,
@@ -102,7 +108,7 @@ export function Topbar({
     <>
       <header className="h-16 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-5 flex items-center justify-between z-30 select-none">
         {/* Left: Brand & Status */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-5">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 text-slate-950 font-black">
               <Globe className="w-5 h-5 text-slate-950" />
@@ -111,7 +117,7 @@ export function Topbar({
               <h1 className="font-bold text-sm tracking-tight text-white flex items-center gap-2">
                 <span>PG Data Lineage</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  FDW Visualizer
+                  FDW Engine
                 </span>
               </h1>
               <p className="text-[11px] text-slate-400">PostgreSQL Lineage & Topology</p>
@@ -120,7 +126,7 @@ export function Topbar({
 
           {/* Quick Stats Pill List */}
           {stats && (
-            <div className="hidden lg:flex items-center gap-2 text-xs">
+            <div className="hidden xl:flex items-center gap-2 text-xs">
               <button
                 onClick={() => setShowDbModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 transition-colors"
@@ -144,8 +150,44 @@ export function Topbar({
           )}
         </div>
 
-        {/* Center: Search & Database filter */}
-        <div className="flex items-center gap-3">
+        {/* Center: Search & Filters */}
+        <div className="flex items-center gap-2.5">
+          {/* Mode Lineage Only Toggle (Crucial for 1500+ tables!) */}
+          <button
+            onClick={onToggleOnlyConnected}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+              onlyConnected
+                ? 'bg-cyan-950/80 border-cyan-500/70 text-cyan-300 shadow-sm shadow-cyan-500/20'
+                : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
+            }`}
+            title={onlyConnected ? 'Klik untuk menampilkan semua tabel' : 'Klik untuk memfilter hanya tabel FDW & Lineage'}
+          >
+            <Zap className={`w-3.5 h-3.5 ${onlyConnected ? 'text-cyan-400 fill-cyan-400' : 'text-slate-400'}`} />
+            <span>
+              {onlyConnected
+                ? `FDW Lineage Only (${stats?.renderedNodes || 0})`
+                : `Semua Tabel (${stats?.totalTables || 0})`}
+            </span>
+          </button>
+
+          {/* Schema Selector */}
+          {stats?.schemas && stats.schemas.length > 0 && (
+            <div className="flex items-center gap-1 text-xs">
+              <select
+                value={selectedSchema}
+                onChange={(e) => onSelectSchema(e.target.value)}
+                className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[140px] truncate"
+              >
+                <option value="ALL">Semua Skema</option>
+                {stats.schemas.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name} ({s.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Search table */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -154,21 +196,21 @@ export function Topbar({
               placeholder="Search table or column..."
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-56 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-64 transition-all"
+              className="w-48 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-56 transition-all"
             />
           </div>
 
           {/* Database filter */}
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="flex items-center gap-1 text-xs">
             <select
               value={selectedDb}
               onChange={(e) => onSelectDb(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[130px] truncate"
             >
-              <option value="ALL">All Databases</option>
+              <option value="ALL">All DBs</option>
               {databases.map((db) => (
                 <option key={db.name} value={db.name}>
-                  {db.name} {db.is_online ? '(Online)' : '(Offline)'}
+                  {db.name}
                 </option>
               ))}
             </select>

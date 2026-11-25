@@ -8,11 +8,12 @@ class ColumnInfo(BaseModel):
     ordinal_position: int
 
 class TableInfo(BaseModel):
-    id: str  # e.g., "postgres-core.public.users"
+    id: str  # e.g., "db-prod.public.users"
     database: str
     schema_name: str
     table_name: str
     table_type: str  # 'BASE TABLE', 'FOREIGN TABLE', 'VIEW', 'MATERIALIZED VIEW'
+    column_count: int = 0
     columns: List[ColumnInfo] = []
     foreign_server: Optional[str] = None
     remote_schema: Optional[str] = None

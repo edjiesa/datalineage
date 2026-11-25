@@ -1,12 +1,12 @@
-from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Query
+from typing import List, Dict, Any, Optional
 from app.config import DBConfig, load_databases, save_databases
 from app.extractor.db_client import PostgresClient
 from app.extractor.fdw_scanner import FDWScanner
 from app.extractor.hba_scanner import HbaScanner
 from app.graph.graph_builder import GraphBuilder
 from app.models.schema import (
-    LineageGraphResponse, ForeignServerInfo, HbaRule, TableInfo
+    LineageGraphResponse, ForeignServerInfo, HbaRule, TableInfo, ColumnInfo
 )
 import logging
 
@@ -83,8 +83,11 @@ def delete_database(name: str):
     raise HTTPException(status_code=404, detail="Database not found")
 
 @router.get("/lineage/graph", response_model=LineageGraphResponse)
-def get_lineage_graph():
-    """Scan all active databases and return React Flow nodes & edges"""
+def get_lineage_graph(
+    only_connected: bool = Query(True, description="Only return tables with FDW/view relationships (prevents lag on 1000+ tables)"),
+    schema: Optional[str] = Query(None, description="Optional schema filter")
+):
+    """Scan all active databases and return React Flow nodes & edges with optional lineage-only filter"""
     all_tables: List[TableInfo] = []
     all_servers: List[ForeignServerInfo] = []
     all_deps = []
@@ -102,7 +105,22 @@ def get_lineage_graph():
 
     configured_db_list = list(configured_databases.keys())
     builder = GraphBuilder(all_tables, all_servers, all_deps, configured_db_list)
-    return builder.build_lineage_graph()
+    return builder.build_lineage_graph(only_connected=only_connected, schema_filter=schema)
+
+@router.get("/table/columns", response_model=List[ColumnInfo])
+def get_table_columns(
+    database: str = Query(..., description="Database name"),
+    schema_name: str = Query(..., description="Schema name"),
+    table_name: str = Query(..., description="Table name")
+):
+    """Fetch column schema on-demand for a single table when clicked in the inspector"""
+    if database not in configured_databases:
+        raise HTTPException(status_code=404, detail=f"Database '{database}' not found")
+    
+    db_cfg = configured_databases[database]
+    client = PostgresClient(db_cfg)
+    scanner = FDWScanner(client)
+    return scanner.get_table_columns(schema_name, table_name)
 
 @router.get("/lineage/servers", response_model=List[ForeignServerInfo])
 def get_foreign_servers():

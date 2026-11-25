@@ -1,8 +1,24 @@
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
-export async function fetchLineageGraph() {
-  const res = await fetch(`${BASE_URL}/api/lineage/graph`);
+export async function fetchLineageGraph(onlyConnected = true, schema = null) {
+  const params = new URLSearchParams();
+  params.append('only_connected', String(onlyConnected));
+  if (schema && schema !== 'ALL') {
+    params.append('schema', schema);
+  }
+  const res = await fetch(`${BASE_URL}/api/lineage/graph?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to fetch lineage graph: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchTableColumns(database, schemaName, tableName) {
+  const params = new URLSearchParams({
+    database,
+    schema_name: schemaName,
+    table_name: tableName
+  });
+  const res = await fetch(`${BASE_URL}/api/table/columns?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to fetch table columns: ${res.statusText}`);
   return res.json();
 }
 
