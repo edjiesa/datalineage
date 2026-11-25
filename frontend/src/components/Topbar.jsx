@@ -17,7 +17,9 @@ import {
   Download,
   Maximize,
   Minimize,
-  Expand
+  Expand,
+  Columns,
+  Cpu
 } from 'lucide-react';
 import { addDatabase, deleteDatabase, testDatabase } from '../services/api';
 import { exportLineageToPdf } from '../services/pdfExport';
@@ -33,6 +35,8 @@ export function Topbar({
   onSelectView,
   viewMode,
   onSelectViewMode,
+  granularity,
+  onSelectGranularity,
   searchTerm,
   onSearchChange,
   onRefresh,
@@ -83,6 +87,7 @@ export function Topbar({
       await exportLineageToPdf({
         database: selectedDb,
         mode: viewMode,
+        granularity: granularity,
         nodeCount: stats?.renderedNodes || 0,
       });
     } catch (err) {
@@ -193,12 +198,19 @@ export function Topbar({
                 <Eye className="w-3.5 h-3.5 text-purple-400" />
                 <span>{stats.views || 0} Views</span>
               </div>
+              {stats.procedures > 0 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-700/50 text-amber-300">
+                  <Cpu className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{stats.procedures} Routines</span>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Center: View Modes Segmented Control */}
+        {/* Center: View Modes & Granularity Controls */}
         <div className="flex items-center gap-2.5">
+          {/* Mode Switcher */}
           <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
             {/* Mode 1: FDW Only */}
             <button
@@ -237,6 +249,34 @@ export function Topbar({
             >
               <Table className="w-3.5 h-3.5" />
               <span>Cari Tabel</span>
+            </button>
+          </div>
+
+          {/* Granularity Switcher: Object vs Column Level (Dataedo CLL) */}
+          <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
+            <button
+              onClick={() => onSelectGranularity('object')}
+              title="Object-Level Lineage (Tabel & Views Ringkas)"
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+                granularity === 'object'
+                  ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Table className="w-3 h-3" />
+              <span>Object</span>
+            </button>
+            <button
+              onClick={() => onSelectGranularity('column')}
+              title="Column-Level Lineage (CLL - Relasi Antar Kolom Dataedo)"
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-all ${
+                granularity === 'column'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Columns className="w-3 h-3" />
+              <span>Column (CLL)</span>
             </button>
           </div>
 

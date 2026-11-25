@@ -6,6 +6,7 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   BackgroundVariant,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { nodeTypes } from './CustomNodes';
@@ -15,6 +16,7 @@ export function Canvas({
   initialEdges,
   selectedDb,
   searchTerm,
+  selectedItem,
   onSelectItem,
   canvasRef,
 }) {
@@ -54,8 +56,58 @@ export function Canvas({
     }
   }, [initialNodes, rfInstance]);
 
-  // Apply search/db filters
+  // 1. Dataedo Impact Analysis: Traverse upstream ancestors & downstream descendants
+  const { upstreamIds, downstreamIds, highlightedEdgeIds } = useMemo(() => {
+    if (!selectedItem) {
+      return { upstreamIds: new Set(), downstreamIds: new Set(), highlightedEdgeIds: new Set() };
+    }
+
+    const up = new Set();
+    const down = new Set();
+    const hEdges = new Set();
+
+    // Helper: find all upstream nodes recursively
+    const findUpstream = (currId) => {
+      edges.forEach((e) => {
+        if (e.target === currId && !up.has(e.source)) {
+          up.add(e.source);
+          hEdges.add(e.id);
+          findUpstream(e.source);
+        }
+      });
+    };
+
+    // Helper: find all downstream nodes recursively
+    const findDownstream = (currId) => {
+      edges.forEach((e) => {
+        if (e.source === currId && !down.has(e.target)) {
+          down.add(e.target);
+          hEdges.add(e.id);
+          findDownstream(e.target);
+        }
+      });
+    };
+
+    if (selectedItem.source && selectedItem.target) {
+      // Edge selected
+      up.add(selectedItem.source);
+      down.add(selectedItem.target);
+      hEdges.add(selectedItem.id);
+      findUpstream(selectedItem.source);
+      findDownstream(selectedItem.target);
+    } else {
+      // Node selected
+      findUpstream(selectedItem.id);
+      findDownstream(selectedItem.id);
+    }
+
+    return { upstreamIds: up, downstreamIds: down, highlightedEdgeIds: hEdges };
+  }, [selectedItem, edges]);
+
+  // 2. Compute Nodes with Search/DB Filter and Impact Highlighting
   const displayNodes = useMemo(() => {
+    const hasSelection = Boolean(selectedItem);
+
     return nodes.map((node) => {
       const data = node.data || {};
       const matchesDb = selectedDb === 'ALL' || data.database === selectedDb;
@@ -69,18 +121,77 @@ export function Canvas({
         matchesSearch = inName || inSchema || inServer;
       }
 
-      const isVisible = matchesDb && matchesSearch;
+      const isBaseVisible = matchesDb && matchesSearch;
+
+      let opacity = isBaseVisible ? 1 : 0.15;
+      let isSelected = false;
+
+      if (hasSelection) {
+        if (selectedItem.id === node.id) {
+          opacity = 1;
+          isSelected = true;
+        } else if (upstreamIds.has(node.id) || downstreamIds.has(node.id)) {
+          opacity = 1;
+        } else {
+          opacity = 0.15;
+        }
+      }
 
       return {
         ...node,
+        selected: isSelected,
         style: {
           ...node.style,
-          opacity: isVisible ? 1 : 0.2,
-          transition: 'opacity 0.25s ease',
+          opacity,
+          transition: 'opacity 0.25s ease, transform 0.25s ease',
         },
       };
     });
-  }, [nodes, selectedDb, searchTerm]);
+  }, [nodes, selectedDb, searchTerm, selectedItem, upstreamIds, downstreamIds]);
+
+  // 3. Compute Edges with Arrowheads and Highlight Strokes
+  const displayEdges = useMemo(() => {
+    const hasSelection = Boolean(selectedItem);
+
+    return edges.map((edge) => {
+      const isHighlighted = highlightedEdgeIds.has(edge.id);
+      const isUpstream = upstreamIds.has(edge.source);
+
+      let strokeColor = edge.style?.stroke || '#06b6d4';
+      let strokeWidth = edge.style?.strokeWidth || 2;
+      let opacity = 1;
+      let animated = edge.animated;
+
+      if (hasSelection) {
+        if (isHighlighted) {
+          strokeColor = isUpstream ? '#06b6d4' : '#f59e0b';
+          strokeWidth = 3.5;
+          opacity = 1;
+          animated = true;
+        } else {
+          opacity = 0.1;
+        }
+      }
+
+      return {
+        ...edge,
+        animated,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: strokeColor,
+          width: 14,
+          height: 14,
+        },
+        style: {
+          ...edge.style,
+          stroke: strokeColor,
+          strokeWidth,
+          opacity,
+          transition: 'all 0.25s ease',
+        },
+      };
+    });
+  }, [edges, selectedItem, highlightedEdgeIds, upstreamIds]);
 
   const onNodeClick = useCallback(
     (_, node) => {
@@ -104,7 +215,7 @@ export function Canvas({
     <div className="w-full h-full bg-slate-950 relative">
       <ReactFlow
         nodes={displayNodes}
-        edges={edges}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
@@ -115,7 +226,7 @@ export function Canvas({
         fitView
         fitViewOptions={{ padding: 0.25 }}
         onlyRenderVisibleElements={true}
-        minZoom={0.1}
+        minZoom={0.08}
         maxZoom={2.0}
         defaultEdgeOptions={{
           type: 'smoothstep',
@@ -136,7 +247,8 @@ export function Canvas({
           nodeColor={(n) => {
             if (n.data?.type === 'FOREIGN TABLE') return '#06b6d4';
             if (n.data?.type?.includes('VIEW')) return '#8b5cf6';
-            if (n.data?.database?.includes('External')) return '#f59e0b';
+            if (n.data?.type === 'PROCEDURE' || n.data?.type === 'FUNCTION') return '#f59e0b';
+            if (n.data?.database?.includes('External')) return '#eab308';
             return '#10b981';
           }}
         />

@@ -1,8 +1,9 @@
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
 
-export async function fetchLineageGraph(mode = 'fdw', schema = null, search = null, view = null) {
+export async function fetchLineageGraph(mode = 'fdw', schema = null, search = null, view = null, granularity = 'object') {
   const params = new URLSearchParams();
   params.append('mode', mode);
+  params.append('granularity', granularity);
   if (schema && schema !== 'ALL') {
     params.append('schema', schema);
   }

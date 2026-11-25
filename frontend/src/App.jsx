@@ -18,6 +18,7 @@ export default function App() {
   const [selectedSchema, setSelectedSchema] = useState('ALL');
   const [selectedView, setSelectedView] = useState('ALL');
   const [viewMode, setViewMode] = useState('fdw'); // Default 'fdw'
+  const [granularity, setGranularity] = useState('object'); // 'object' vs 'column' (Dataedo CLL)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [isHbaOpen, setIsHbaOpen] = useState(false);
@@ -27,7 +28,7 @@ export default function App() {
     setError(null);
     try {
       const [graph, dbs] = await Promise.all([
-        fetchLineageGraph(viewMode, selectedSchema, searchTerm, selectedView),
+        fetchLineageGraph(viewMode, selectedSchema, searchTerm, selectedView, granularity),
         fetchDatabases(),
       ]);
       setGraphData(graph);
@@ -38,7 +39,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedSchema, searchTerm, selectedView]);
+  }, [viewMode, selectedSchema, searchTerm, selectedView, granularity]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -67,6 +68,8 @@ export default function App() {
         onSelectView={setSelectedView}
         viewMode={viewMode}
         onSelectViewMode={handleModeChange}
+        granularity={granularity}
+        onSelectGranularity={setGranularity}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         onRefresh={loadData}
@@ -116,6 +119,7 @@ export default function App() {
             initialEdges={graphData.edges}
             selectedDb={selectedDb}
             searchTerm={searchTerm}
+            selectedItem={selectedItem}
             onSelectItem={setSelectedItem}
             canvasRef={canvasRef}
           />
@@ -125,6 +129,7 @@ export default function App() {
         <InspectorDrawer
           selectedItem={selectedItem}
           onClose={() => setSelectedItem(null)}
+          onSelectItem={setSelectedItem}
         />
       </div>
 

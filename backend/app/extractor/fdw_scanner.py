@@ -1,6 +1,9 @@
 from typing import List, Dict, Any, Optional
 from app.extractor.db_client import PostgresClient
-from app.models.schema import TableInfo, ColumnInfo, ForeignServerInfo, ViewDependency
+from app.models.schema import (
+    TableInfo, ColumnInfo, ForeignServerInfo, ViewDependency,
+    RoutineInfo, ColumnDependency
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -109,6 +112,9 @@ class FDWScanner:
         matview_rows = self.client.execute_query(matview_query)
         all_table_rows = table_rows + matview_rows
 
+        # 5. Fetch SQL definition for all views
+        view_defs = self.scan_view_definitions()
+
         tables = []
         for t in all_table_rows:
             s_name = t["schema_name"]
@@ -140,11 +146,12 @@ class FDWScanner:
                 table_name=t_name,
                 table_type=final_type,
                 column_count=col_count_map.get(t_key, 0),
-                columns=[],  # Populated on-demand
+                columns=[],  # Populated on-demand or in column-level mode
                 foreign_server=f_server,
                 remote_schema=r_schema,
                 remote_table=r_table,
-                foreign_options=f_options
+                foreign_options=f_options,
+                sql_definition=view_defs.get(t_key)
             ))
         return tables
 
@@ -214,3 +221,131 @@ class FDWScanner:
                 dep_kind=r.get("dep_kind") or "r"
             ))
         return deps
+
+    def scan_view_definitions(self) -> Dict[str, str]:
+        """Fetch exact CREATE VIEW / MATVIEW SQL queries using pg_get_viewdef"""
+        query = """
+        SELECT 
+            n.nspname AS schema_name,
+            c.relname AS view_name,
+            pg_get_viewdef(c.oid, true) AS view_def
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE c.relkind IN ('v', 'm')
+          AND n.nspname NOT IN ('information_schema', 'pg_catalog');
+        """
+        try:
+            rows = self.client.execute_query(query)
+            return {f"{r['schema_name']}.{r['view_name']}": r["view_def"] for r in rows if r.get("view_def")}
+        except Exception as e:
+            logger.warning(f"Failed to fetch view definitions on {self.db_name}: {e}")
+            return {}
+
+    def scan_column_dependencies(self) -> List[ColumnDependency]:
+        """Scan column-level data lineage using information_schema.view_column_usage"""
+        query = """
+        SELECT DISTINCT
+            view_schema,
+            view_name,
+            column_name AS view_column,
+            table_schema AS source_schema,
+            table_name AS source_table,
+            column_name AS source_column
+        FROM information_schema.view_column_usage
+        WHERE view_schema NOT IN ('information_schema', 'pg_catalog')
+          AND table_schema NOT IN ('information_schema', 'pg_catalog');
+        """
+        try:
+            rows = self.client.execute_query(query)
+            deps = []
+            for r in rows:
+                deps.append(ColumnDependency(
+                    database=self.db_name,
+                    view_schema=r["view_schema"],
+                    view_name=r["view_name"],
+                    view_column=r["view_column"],
+                    source_schema=r["source_schema"],
+                    source_table=r["source_table"],
+                    source_column=r["source_column"],
+                ))
+            return deps
+        except Exception as e:
+            logger.warning(f"Failed to scan column dependencies on {self.db_name}: {e}")
+            return []
+
+    def scan_stored_procedures(self) -> List[RoutineInfo]:
+        """Scan stored procedures and user-defined functions acting as processors in data lineage"""
+        query = """
+        SELECT 
+            n.nspname AS routine_schema,
+            p.proname AS routine_name,
+            CASE WHEN p.prokind = 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS routine_type,
+            pg_get_function_arguments(p.oid) AS arguments,
+            t.typname AS return_type,
+            pg_get_functiondef(p.oid) AS sql_definition
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        JOIN pg_type t ON p.prorettype = t.oid
+        WHERE n.nspname NOT IN ('information_schema', 'pg_catalog')
+          AND (p.prokind = 'p' OR (p.prokind = 'f' AND p.proretset = true))
+        ORDER BY n.nspname, p.proname;
+        """
+        try:
+            rows = self.client.execute_query(query)
+            routines = []
+            for r in rows:
+                routines.append(RoutineInfo(
+                    id=f"{self.db_name}.{r['routine_schema']}.{r['routine_name']}",
+                    database=self.db_name,
+                    schema_name=r["routine_schema"],
+                    routine_name=r["routine_name"],
+                    routine_type=r["routine_type"],
+                    arguments=r.get("arguments") or "",
+                    return_type=r.get("return_type") or "",
+                    sql_definition=r.get("sql_definition")
+                ))
+            return routines
+        except Exception as e:
+            logger.warning(f"Failed to scan stored procedures on {self.db_name}: {e}")
+            return []
+
+    def get_columns_for_tables(self, table_keys: List[tuple]) -> Dict[str, List[ColumnInfo]]:
+        """Fast batch fetch columns for a set of (schema_name, table_name) tuples"""
+        if not table_keys:
+            return {}
+        
+        # Build IN clauses
+        schema_table_filters = " OR ".join(["(table_schema = %s AND table_name = %s)"] * len(table_keys))
+        params = []
+        for s, t in table_keys:
+            params.extend([s, t])
+            
+        query = f"""
+        SELECT 
+            table_schema,
+            table_name,
+            column_name,
+            data_type,
+            is_nullable,
+            ordinal_position
+        FROM information_schema.columns
+        WHERE {schema_table_filters}
+        ORDER BY table_schema, table_name, ordinal_position;
+        """
+        try:
+            rows = self.client.execute_query(query, tuple(params))
+            col_map: Dict[str, List[ColumnInfo]] = {}
+            for r in rows:
+                key = f"{r['table_schema']}.{r['table_name']}"
+                if key not in col_map:
+                    col_map[key] = []
+                col_map[key].append(ColumnInfo(
+                    name=r["column_name"],
+                    data_type=r["data_type"],
+                    is_nullable=r["is_nullable"],
+                    ordinal_position=r["ordinal_position"]
+                ))
+            return col_map
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch columns on {self.db_name}: {e}")
+            return {}

@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 export async function exportLineageToPdf({
   database = 'PostgreSQL',
   mode = 'fdw',
+  granularity = 'object',
   nodeCount = 0,
 }) {
   const flowElement = document.querySelector('.react-flow');
@@ -56,7 +57,7 @@ export async function exportLineageToPdf({
     dateStyle: 'medium',
     timeStyle: 'short',
   });
-  pdf.text(`Database: ${database}  |  Mode: ${mode.toUpperCase()}  |  Nodes: ${nodeCount}  |  Generated: ${dateStr}`, 14, 21);
+  pdf.text(`Database: ${database}  |  Mode: ${mode.toUpperCase()}  |  Granularity: ${granularity.toUpperCase()}  |  Nodes: ${nodeCount}  |  Generated: ${dateStr}`, 14, 21);
 
   // Divider line
   pdf.setDrawColor(30, 41, 59); // slate-800

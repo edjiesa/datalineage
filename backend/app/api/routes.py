@@ -87,12 +87,15 @@ def get_lineage_graph(
     mode: str = Query("fdw", description="View mode: 'fdw' (default, instant), 'views', or 'all'"),
     schema: Optional[str] = Query(None, description="Optional schema filter"),
     search: Optional[str] = Query(None, description="Optional search query"),
-    view: Optional[str] = Query(None, description="Optional specific view to inspect")
+    view: Optional[str] = Query(None, description="Optional specific view to inspect"),
+    granularity: str = Query("object", description="Granularity mode: 'object' or 'column'")
 ):
-    """Scan all active databases and return React Flow nodes & edges with mode-based filtering"""
+    """Scan all active databases and return React Flow nodes & edges with Dataedo-grade features"""
     all_tables: List[TableInfo] = []
     all_servers: List[ForeignServerInfo] = []
     all_deps = []
+    all_routines = []
+    all_col_deps = []
 
     for name, db_cfg in configured_databases.items():
         client = PostgresClient(db_cfg)
@@ -104,10 +107,37 @@ def get_lineage_graph(
         all_servers.extend(scanner.scan_foreign_servers())
         all_tables.extend(scanner.scan_tables_and_views())
         all_deps.extend(scanner.scan_view_dependencies())
+        all_col_deps.extend(scanner.scan_column_dependencies())
+        all_routines.extend(scanner.scan_stored_procedures())
+
+        # If in column mode or views mode, batch pre-fetch columns for relevant views and source tables
+        if granularity == "column" or mode in ("views", "fdw"):
+            views_and_fdw = [t for t in all_tables if "VIEW" in t.table_type or t.table_type == "FOREIGN TABLE"]
+            dep_keys = [(d.dep_schema, d.dep_table) for d in all_deps]
+            keys_to_fetch = list({(t.schema_name, t.table_name) for t in views_and_fdw[:40]} | set(dep_keys[:40]))
+            if keys_to_fetch:
+                col_map = scanner.get_columns_for_tables(keys_to_fetch)
+                for t in all_tables:
+                    k = f"{t.schema_name}.{t.table_name}"
+                    if k in col_map:
+                        t.columns = col_map[k]
 
     configured_db_list = list(configured_databases.keys())
-    builder = GraphBuilder(all_tables, all_servers, all_deps, configured_db_list)
-    return builder.build_lineage_graph(mode=mode, schema_filter=schema, search_query=search, selected_view=view)
+    builder = GraphBuilder(
+        all_tables=all_tables, 
+        all_servers=all_servers, 
+        all_deps=all_deps, 
+        configured_dbs=configured_db_list,
+        all_routines=all_routines,
+        all_col_deps=all_col_deps
+    )
+    return builder.build_lineage_graph(
+        mode=mode, 
+        schema_filter=schema, 
+        search_query=search, 
+        selected_view=view,
+        granularity=granularity
+    )
 
 @router.get("/table/columns", response_model=List[ColumnInfo])
 def get_table_columns(

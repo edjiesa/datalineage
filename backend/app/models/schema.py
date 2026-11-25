@@ -19,6 +19,26 @@ class TableInfo(BaseModel):
     remote_schema: Optional[str] = None
     remote_table: Optional[str] = None
     foreign_options: Dict[str, str] = {}
+    sql_definition: Optional[str] = None
+
+class RoutineInfo(BaseModel):
+    id: str  # e.g., "db-prod.public.sp_sync_users"
+    database: str
+    schema_name: str
+    routine_name: str
+    routine_type: str  # 'PROCEDURE' or 'FUNCTION'
+    arguments: Optional[str] = ""
+    return_type: Optional[str] = ""
+    sql_definition: Optional[str] = None
+
+class ColumnDependency(BaseModel):
+    database: str
+    view_schema: str
+    view_name: str
+    view_column: Optional[str] = None
+    source_schema: str
+    source_table: str
+    source_column: str
 
 class ForeignServerInfo(BaseModel):
     database: str
@@ -51,7 +71,7 @@ class HbaRule(BaseModel):
 
 class GraphNode(BaseModel):
     id: str
-    type: str  # 'tableNode', 'databaseGroup'
+    type: str  # 'tableNode', 'procedureNode', 'databaseGroup'
     position: Dict[str, float]
     data: Dict[str, Any]
     parentNode: Optional[str] = None
@@ -61,6 +81,8 @@ class GraphEdge(BaseModel):
     id: str
     source: str
     target: str
+    sourceHandle: Optional[str] = None
+    targetHandle: Optional[str] = None
     type: Optional[str] = "smoothstep"
     animated: Optional[bool] = False
     label: Optional[str] = None
