@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Database,
   Globe,
@@ -14,8 +14,13 @@ import {
   X,
   Info,
   Zap,
+  Download,
+  Maximize,
+  Minimize,
+  Expand
 } from 'lucide-react';
 import { addDatabase, deleteDatabase, testDatabase } from '../services/api';
+import { exportLineageToPdf } from '../services/pdfExport';
 
 export function Topbar({
   stats,
@@ -33,6 +38,7 @@ export function Topbar({
   onRefresh,
   loading,
   onOpenHbaModal,
+  onFitView,
 }) {
   const [showDbModal, setShowDbModal] = useState(false);
   const [formName, setFormName] = useState('');
@@ -44,6 +50,47 @@ export function Topbar({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // PDF Export state
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error('Failed to enter fullscreen:', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setExportingPdf(true);
+    try {
+      await exportLineageToPdf({
+        database: selectedDb,
+        mode: viewMode,
+        nodeCount: stats?.renderedNodes || 0,
+      });
+    } catch (err) {
+      alert(`Gagal mengekspor PDF: ${err.message}`);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   async function handleTest() {
     if (!formHost || !formDbName || !formUser) {
@@ -106,10 +153,10 @@ export function Topbar({
 
   return (
     <>
-      <header className="h-16 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-5 flex items-center justify-between z-30 select-none">
+      <header className="h-16 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 flex items-center justify-between z-30 select-none">
         {/* Left: Brand & Stats */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 text-slate-950 font-black">
               <Globe className="w-5 h-5 text-slate-950" />
             </div>
@@ -151,7 +198,7 @@ export function Topbar({
         </div>
 
         {/* Center: View Modes Segmented Control */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="flex bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs">
             {/* Mode 1: FDW Only */}
             <button
@@ -189,7 +236,7 @@ export function Topbar({
               }`}
             >
               <Table className="w-3.5 h-3.5" />
-              <span>Cari Tabel ({stats?.totalTables || 0})</span>
+              <span>Cari Tabel</span>
             </button>
           </div>
 
@@ -199,7 +246,7 @@ export function Topbar({
               <select
                 value={selectedView}
                 onChange={(e) => onSelectView(e.target.value)}
-                className="bg-purple-950/80 border border-purple-700/60 rounded-xl px-2.5 py-1.5 text-purple-200 text-xs font-semibold focus:outline-none focus:border-purple-400 max-w-[200px] truncate"
+                className="bg-purple-950/80 border border-purple-700/60 rounded-xl px-2.5 py-1.5 text-purple-200 text-xs font-semibold focus:outline-none focus:border-purple-400 max-w-[190px] truncate"
               >
                 <option value="ALL">Semua Views ({stats.viewsList.length})</option>
                 {stats.viewsList.map((v) => (
@@ -231,13 +278,13 @@ export function Topbar({
 
           {/* Search box */}
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder={viewMode === 'views' ? 'Cari nama view...' : 'Cari nama tabel...'}
+              placeholder={viewMode === 'views' ? 'Cari view...' : 'Cari tabel...'}
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-40 pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-52 transition-all"
+              className="w-36 pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:w-48 transition-all"
             />
           </div>
 
@@ -246,7 +293,7 @@ export function Topbar({
             <select
               value={selectedDb}
               onChange={(e) => onSelectDb(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[120px] truncate"
+              className="bg-slate-950/80 border border-slate-800 rounded-xl px-2 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-cyan-500 max-w-[110px] truncate"
             >
               <option value="ALL">All DBs</option>
               {databases.map((db) => (
@@ -258,31 +305,70 @@ export function Topbar({
           </div>
         </div>
 
-        {/* Right: Actions */}
+        {/* Right: Actions (Fit View, Fullscreen, PDF, Manage DB, HBA, Rescan) */}
         <div className="flex items-center gap-2">
+          {/* Fit View to 1 Full Screen */}
+          <button
+            onClick={onFitView}
+            title="Pusatkan & Sesuaikan 1 Layar Penuh (Fit View)"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 transition-colors"
+          >
+            <Expand className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden xl:inline">Fit Screen</span>
+          </button>
+
+          {/* Fullscreen Browser Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Keluar Fullscreen' : 'Layar Penuh Browser (Fullscreen)'}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 transition-colors"
+          >
+            {isFullscreen ? (
+              <Minimize className="w-3.5 h-3.5 text-amber-400" />
+            ) : (
+              <Maximize className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="hidden xl:inline">{isFullscreen ? 'Exit Full' : 'Full Screen'}</span>
+          </button>
+
+          {/* Download PDF Button */}
+          <button
+            onClick={handleDownloadPdf}
+            disabled={exportingPdf}
+            title="Download visualisasi diagram ke file PDF"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 text-xs text-white font-bold transition-all shadow-md shadow-emerald-700/20 disabled:opacity-50"
+          >
+            {exportingPdf ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            <span>PDF</span>
+          </button>
+
           {/* Databases Manager Button */}
           <button
             onClick={() => setShowDbModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
           >
             <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>Manage DBs</span>
+            <span className="hidden lg:inline">Manage DBs</span>
           </button>
 
           {/* pg_hba.conf Modal Trigger */}
           <button
             onClick={onOpenHbaModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 font-medium transition-colors"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span>pg_hba.conf</span>
+            <span className="hidden lg:inline">pg_hba</span>
           </button>
 
           {/* Rescan Button */}
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-600/20 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-600/20 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Rescan</span>

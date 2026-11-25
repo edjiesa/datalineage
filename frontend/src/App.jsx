@@ -71,6 +71,7 @@ export default function App() {
         onRefresh={loadData}
         loading={loading}
         onOpenHbaModal={() => setIsHbaOpen(true)}
+        onFitView={() => canvasRef.current?.fitView()}
       />
 
       {/* Main Canvas Area */}
@@ -115,6 +116,7 @@ export default function App() {
             selectedDb={selectedDb}
             searchTerm={searchTerm}
             onSelectItem={setSelectedItem}
+            canvasRef={canvasRef}
           />
         )}
 

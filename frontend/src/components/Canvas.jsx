@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useEffect, useState, useImperativeHandle } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -16,20 +16,41 @@ export function Canvas({
   selectedDb,
   searchTerm,
   onSelectItem,
+  canvasRef,
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [rfInstance, setRfInstance] = useState(null);
 
   // Sync internal state when props change
-  React.useEffect(() => {
+  useEffect(() => {
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setEdges(initialEdges);
   }, [initialEdges, setEdges]);
 
-  // Apply filters (Database filter & Search filter)
+  // Expose fitView to parent via ref
+  useImperativeHandle(canvasRef, () => ({
+    fitView: () => {
+      if (rfInstance) {
+        rfInstance.fitView({ padding: 0.25, duration: 400 });
+      }
+    },
+  }));
+
+  // Auto-fit to full screen whenever nodes change
+  useEffect(() => {
+    if (rfInstance && initialNodes.length > 0) {
+      const timer = setTimeout(() => {
+        rfInstance.fitView({ padding: 0.25, duration: 400 });
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [initialNodes, rfInstance]);
+
+  // Apply search/db filters
   const displayNodes = useMemo(() => {
     return nodes.map((node) => {
       const data = node.data || {};
@@ -41,10 +62,7 @@ export function Canvas({
         const inName = (data.name || '').toLowerCase().includes(query);
         const inSchema = (data.schema || '').toLowerCase().includes(query);
         const inServer = (data.foreignServer || '').toLowerCase().includes(query);
-        const inCols = (data.columns || []).some((c) =>
-          (c.name || '').toLowerCase().includes(query)
-        );
-        matchesSearch = inName || inSchema || inServer || inCols;
+        matchesSearch = inName || inSchema || inServer;
       }
 
       const isVisible = matchesDb && matchesSearch;
@@ -53,8 +71,7 @@ export function Canvas({
         ...node,
         style: {
           ...node.style,
-          opacity: isVisible ? 1 : 0.15,
-          pointerEvents: isVisible ? 'all' : 'none',
+          opacity: isVisible ? 1 : 0.2,
           transition: 'opacity 0.25s ease',
         },
       };
@@ -90,11 +107,12 @@ export function Canvas({
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onInit={setRfInstance}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.25 }}
         onlyRenderVisibleElements={true}
-        minZoom={0.2}
-        maxZoom={1.8}
+        minZoom={0.1}
+        maxZoom={2.0}
         defaultEdgeOptions={{
           type: 'smoothstep',
         }}
@@ -114,9 +132,8 @@ export function Canvas({
           nodeColor={(n) => {
             if (n.data?.type === 'FOREIGN TABLE') return '#06b6d4';
             if (n.data?.type?.includes('VIEW')) return '#8b5cf6';
-            if (n.data?.database === 'postgres-core') return '#10b981';
-            if (n.data?.database === 'postgres-logistics') return '#3b82f6';
-            return '#64748b';
+            if (n.data?.database?.includes('External')) return '#f59e0b';
+            return '#10b981';
           }}
         />
       </ReactFlow>
